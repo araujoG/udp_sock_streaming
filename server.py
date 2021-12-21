@@ -29,7 +29,7 @@ class ServerModule():
         addr = ("", self.port)
 
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind(addr)
 
         print(f"SERVIDOR INICIADO {addr}")
@@ -40,13 +40,12 @@ class ServerModule():
         while (True):
             try:
                 data, client_address = self.server_socket.recvfrom(1024)  # recebendo pacote com comando do cliente
-                print(f"COMANDO DE CLIENTE RECEBIDO {client_address[0]} - {data.decode('utf-8')}")
+                print(f"COMANDO DE CLIENTE RECEBIDO {client_address} - {data.decode('utf-8')}\n")
                 if ("PARAR_STREAMING" == data.decode('utf-8')):  # request de parada de streaming
-                    self.client_stop_list.append(client_address[0])
+                    self.client_stop_list.append(client_address)
                     continue
                 else:
-                    client_thread = threading.Thread(target=self.single_client_serving, args=(
-                    data, client_address))  # iniciando thread para servir um cliente
+                    client_thread = threading.Thread(target=self.single_client_serving, args=(data, client_address))  # iniciando thread para servir um cliente
                     client_thread.daemon = True  # thread independente
                     client_thread.start()
             except KeyboardInterrupt:
@@ -54,24 +53,23 @@ class ServerModule():
                 
     def single_client_serving(self,data,client_address): #iniciando servico de um cliente qualquer
         data = data.decode('utf-8')
-        server_socket = self.start_server()
-        server_socket1 = self.start_server()
+        # server_socket = self.start_server()
 
         if ("LISTAR_VIDEOS" == data):  # listando videos para o cliente
-            print(f"RECEBIDO DE {client_address[0]}- LISTAR_VIDEOS\n")
+            print(f"RECEBIDO DE {client_address}- LISTAR_VIDEOS\n")
             message = self.list_videos()
-            print(f"ENVIANDO PARA {client_address[0]}")
+            print(f"ENVIANDO PARA {client_address}")
             print(message)
-            server_socket.sendto(message, client_address)
+            self.server_socket.sendto(message, client_address)
 
         if ("REPRODUZIR_VIDEO" in data):  # streaming de um video para o cliente
             now = time.time()
-            print(f"RECEBIDO DE {client_address[0]}- REPRODUZIR_VIDEO\n")
-            self.play_video(data,client_address,server_socket)
+            print(f"RECEBIDO DE {client_address}- REPRODUZIR_VIDEO\n")
+            self.play_video(data,client_address,self.server_socket)
             end = time.time() - now
             print(end)
 
-        server_socket.close()
+        # server_socket.close()
         return
 
     def list_videos(self):  # resgatando lista de videos disponiveis
@@ -95,9 +93,9 @@ class ServerModule():
             cv2.waitKey(30)  # esperando para controlar o fps
             ret, frame = video.read()  # retorno se tem algum frame / resgatando frame atual
 
-            if (not ret or client_address[0] in self.client_stop_list):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
+            if (not ret or client_address in self.client_stop_list):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
                 video.release()  # liberando video
-                self.client_stop_list.remove(client_address[0])  # removendo cliente da lista de paradas
+                self.client_stop_list.remove(client_address)  # removendo cliente da lista de paradas
                 return
 
             self.framing_video(frame, client_address, server_socket)
@@ -116,7 +114,7 @@ class ServerModule():
             ending_pos = min(size, start_pos + self.MAX_IMG_DGRAM_SIZE)  # atualizando posicao final para envio
             server_socket.sendto(struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
                                  client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
-            print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
+            print(f"ENVIANDO FRAME VIDEO PARA {client_address}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
@@ -154,22 +152,22 @@ class ServerModule():
             input=True,
             frames_per_buffer=CHUNK)
 
-        print(f"RECEBIDA CHAMADA AUDIO PARA {client_address[0]} {server_socket}")
+        print(f"RECEBIDA CHAMADA AUDIO PARA {client_address} {server_socket}")
 
-        print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
+        print(f"ENVIANDO FRAME AUDIO PARA {client_address} {server_socket}")
         data = None
         sample_rate = wavfile.getframerate()
         cnt = 0
         while True:
             frame = wavfile.readframes(CHUNK)
             server_socket.sendto(frame, client_address)
-            print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]}")
+            print(f"ENVIANDO FRAME AUDIO PARA {client_address}")
             time.sleep(0.8 * CHUNK / sample_rate)
             if cnt > (wavfile.getnframes() / CHUNK):
                 break
             cnt += 1
 
-        print(f"FIM AUDIO PARA {client_address[0]}")
+        print(f"FIM AUDIO PARA {client_address}")
         # para de enviar o fluxo para o dispositivo de saida
         stream.stop_stream()
         # fecha o fluxo
