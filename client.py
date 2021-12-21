@@ -41,7 +41,7 @@ class ClientModule:
 
     # Inicializa o socket do client
     def start_client(self):
-        port = 5000
+        port = 5050
         addr = ("", port)
 
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
