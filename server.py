@@ -45,7 +45,6 @@ class ServerModule():
                 print(f"COMANDO DE CLIENTE RECEBIDO {client_address[0]} - {data.decode('utf-8')}")
                 if ("PARAR_STREAMING" == data.decode('utf-8')):  # request de parada de streaming
                     self.client_stop_list.append(client_address[0])
-                    print(f"RECEBENDO DE {client_address[0]} - PARAR_STREAMING")
                     continue
                 else:
                     client_thread = threading.Thread(target=self.single_client_serving, args=(
