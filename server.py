@@ -15,7 +15,9 @@ from moviepy.editor import *
 
 class ServerModule():
     MAX_DGRAM_SIZE = 2 ** 16  # tamanho maximo do pacote udp
-    MAX_IMG_DGRAM_SIZE = MAX_DGRAM_SIZE - 64  # evitar overflow no pacote
+    MAX_FRAME_DGRAM_SIZE = MAX_DGRAM_SIZE - 64  # evitar overflow no pacote
+    MAX_AUDIO_DGRAM_SIZE = math.ceil(MAX_DGRAM_SIZE - (2 ** 16)/2)
+
 
     def __init__(self):
         self.port = 6000
@@ -55,10 +57,9 @@ class ServerModule():
                 
     def single_client_serving(self,data,client_address): #iniciando servico de um cliente qualquer
         data = data.decode('utf-8')
-        server_socket = self.start_server()
-        server_socket1 = self.start_server()
 
         if ("LISTAR_VIDEOS" == data):  # listando videos para o cliente
+            server_socket = self.start_server()
             print(f"RECEBIDO DE {client_address[0]}- LISTAR_VIDEOS\n")
             message = self.list_videos()
             print(f"ENVIANDO PARA {client_address[0]}")
@@ -66,13 +67,15 @@ class ServerModule():
             server_socket.sendto(message, client_address)
 
         if ("REPRODUZIR_VIDEO" in data):  # streaming de um video para o cliente
-            now = time.time()
             print(f"RECEBIDO DE {client_address[0]}- REPRODUZIR_VIDEO\n")
-            self.play_video(data,client_address,server_socket)
-            end = time.time() - now
-            print(end)
-
-        server_socket.close()
+            server_socket_video = self.start_server()
+            server_socket_audio = self.start_server()
+            splitted_data = data.split(' ')
+            self.conversor_audio(splitted_data[1]+"_"+splitted_data[2]+".mp4")
+            audio_thread = threading.Thread(target=self.play_audio, args=(data,client_address,server_socket_audio,splitted_data))
+            video_thread = threading.Thread(target=self.play_video, args=(data,client_address,server_socket_video,splitted_data))
+            audio_thread.start()
+            video_thread.start()
         return
 
     def list_videos(self):  # resgatando lista de videos disponiveis
@@ -84,8 +87,7 @@ class ServerModule():
         message = message.encode()
         return message
 
-    def play_video(self, data, client_address, server_socket):
-        splitted_data = data.split(' ')
+    def play_video(self, data, client_address, server_socket,splitted_data):
         video_name = splitted_data[1]
         resolution = splitted_data[2]
         video_string = './videos/' + video_name + '_' + resolution + '.mp4'  # path do video
@@ -95,12 +97,15 @@ class ServerModule():
         while (video.isOpened()):
             cv2.waitKey(30)  # esperando para controlar o fps
             ret, frame = video.read()  # retorno se tem algum frame / resgatando frame atual
-
-            if (not ret or client_address[0] in self.client_stop_list):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
-                video.release()  # liberando video
-                self.client_stop_list.remove(client_address[0])  # removendo cliente da lista de paradas
+            if (not ret):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
+                video.release()
+                server_socket.close()  # liberando video
                 return
-
+            if (client_address[0] in self.client_stop_list):
+                self.client_stop_list.remove(client_address[0])  # removendo cliente da lista de paradas
+                video.release()
+                server_socket.close()
+                return
             self.framing_video(frame, client_address, server_socket)
 
     def framing_video(self, frame, client_address, server_socket):  # segmentacao e envio do video
@@ -108,34 +113,31 @@ class ServerModule():
         data = buff_frame_data.tostring()  # array de bytes do frame
         size = len(data)  # tamanho do frame atual
 
-        number_of_segments = math.ceil(size / self.MAX_IMG_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
+        number_of_segments = math.ceil(size / self.MAX_FRAME_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
 
         start_pos = 0
         ending_pos = 0
 
         while (number_of_segments):
-            ending_pos = min(size, start_pos + self.MAX_IMG_DGRAM_SIZE)  # atualizando posicao final para envio
-            server_socket.sendto(struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
+            ending_pos = min(size, start_pos + self.MAX_FRAME_DGRAM_SIZE)  # atualizando posicao final para envio
+            server_socket.sendto(struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
                                  client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
             print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
-    def conversor_audio(self, nome_video):  # para pegar o audio do video e vonverter em um arquivo wav
-        my_clip = mp.VideoFileClip(r"./videos/" + nome_video)  # para importar o video
+    def conversor_audio(self, video_name):  # para pegar o audio do video e vonverter em um arquivo wav
+        my_clip = mp.VideoFileClip(r"./videos/" + video_name)  # para importar o video
 
-        while nome_video[-1] != ".":  # para deletar o mp4 do nome do arquivo
-            nome_video = nome_video[:-1]
+        while video_name[-1] != ".":  # para deletar o mp4 do nome do arquivo
+            video_name = video_name[:-1]
 
-        nome_video = nome_video + "wav"  # adicionando o tipo do arquivo no final do nome
+        video_name = video_name + "wav"  # adicionando o tipo do arquivo no final do nome
 
-        my_clip.audio.write_audiofile(r"./audios/" + nome_video)  # transforma o audio em um arquivo wav
+        my_clip.audio.write_audiofile(r"./audios/" + video_name)  # transforma o audio em um arquivo wav
 
-    def play_audio(self, data, client_address, server_socket):  # roda o audio
+    def play_audio(self, data, client_address, server_socket,splitted_data):  # roda o audio
         # chunck mostra quantos pontos iremos ler por vez no arquivo wave
-        print("entrou msm")
-        CHUNK = 2048
-        splitted_data = data.split(' ')
         audio_name = splitted_data[1]
         resolution = splitted_data[2]
         audio_string = './audios/' + audio_name + '_' + resolution + '.wav'  # path do audio
@@ -148,6 +150,7 @@ class ServerModule():
 
         # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
         # a partir do próprio arquivo wave aberto anteriormente
+        CHUNK = 1024
         stream = audioobj.open(
             format=audioobj.get_format_from_width(wavfile.getsampwidth()),
             channels=wavfile.getnchannels(),
@@ -162,14 +165,20 @@ class ServerModule():
         sample_rate = wavfile.getframerate()
         cnt = 0
         while True:
+            if(client_address[0] in self.client_stop_list):
+                self.client_stop_list.remove(client_address[0])
+                break
             frame = wavfile.readframes(CHUNK)
-            server_socket.sendto(frame, client_address)
-            print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]}")
-            time.sleep(0.8 * CHUNK / sample_rate)
+            print("ENVIANDO AUDIO PARA "+ client_address[0])
+            server_socket.sendto(struct.pack("?", False) + frame, client_address)
+            # time.sleep(0.8 * self.MAX_AUDIO_DGRAM_SIZE / sample_rate)
             if cnt > (wavfile.getnframes() / CHUNK):
                 break
             cnt += 1
 
+        # message = 'FIM_AUDIO'
+        # message = message.encode()
+        # server_socket.sendto(message, client_address)
         print(f"FIM AUDIO PARA {client_address[0]}")
         # para de enviar o fluxo para o dispositivo de saida
         stream.stop_stream()
@@ -179,7 +188,7 @@ class ServerModule():
         audioobj.terminate()
         # fecha o arquivo wave
         wavfile.close()
-
+        
 def main():
     ServerModule()
 

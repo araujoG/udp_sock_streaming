@@ -25,6 +25,9 @@ class ClientModule:
         self.resolution = StringVar()
         self.video_name = StringVar()
 
+
+        self.audio_frame_list = []
+
         # intervalo de atualização dos frames do player
         self.interval = 20
         # imagem recebida do servidor
@@ -45,7 +48,7 @@ class ClientModule:
         client_socket.bind(addr)
 
         return client_socket
-
+    
     # Solicita o stream de um video de nome video_name e resolução resolution
     def request_stream(self, video_name, resolution):
         message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution}"
@@ -53,31 +56,44 @@ class ClientModule:
         self.client_socket.sendto(message, (self.server_addr, self.server_port))
 
         print(f"ENVIANDO PARA SERVIDOR DE STREAMING - {message}")
+
         self.video_frame_decode()
 
     # Solicita o streaming do video selecionado
     def stream_selected_video(self):
         self.request_stream(self.video_name.get(), self.resolution.get())
 
+
+    def audio_run(self):
+        stream = self.audio_frame_decode()
+        while(not self.finished):
+            for frame in self.audio_frame_list:
+                if(self.finished):
+                    return
+                stream.write(frame)
+                self.audio_frame_list.remove(frame)
+
+
     def audio_frame_decode(self):
-        self.client_socket.sendto(b'Ack', (self.server_addr, self.server_port))
+        # self.client_socket.sendto(b'Ack', (self.server_addr, self.server_port))
         # criamos um objeto pyaudio para manipular o arquivo
         p = pyaudio.PyAudio()
-        CHUNK = 1024
         # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
         # a partir do próprio arquivo wave aberto anteriormente
+        CHUNK = 1024
         stream = p.open(format=p.get_format_from_width(2),
                         channels=2,
                         rate=44100,
                         output=True,
                         frames_per_buffer=CHUNK)
 
+
         # lemos <chunck> bytes por vez do stream e o enviamos <write> para o dispositivo
         # padrão de saída de audio. Quando termina de ler sai fora do loop
-        while True:
-            frame, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
-            stream.write(frame)
-        print("FIM AUDIO")
+        # audio_data = []
+        # self.client_socket.settimeout(1)
+        return stream
+                
 
     # Recebe os bytes do video através do servidor, decodifica e reproduz o vídeo
     def video_frame_decode(self):
@@ -93,6 +109,9 @@ class ClientModule:
                 break
 
         # Inicia a thread que carrega os frames do buffer
+        print("receive frames")
+
+        # audio_buffer_thread = threading.Thread(target=self.audio_run,args=(audio_data,stream))
         bufferThread = threading.Thread(target=self.receive_frames)
         bufferThread.start()
 
@@ -110,6 +129,9 @@ class ClientModule:
         # Inicia a thread que atualiza os frames do player
         windowThread = threading.Thread(target=self.update_image)
         windowThread.start()
+
+        audio_thread = threading.Thread(target=self.audio_run)
+        audio_thread.start() 
 
         # Callback para quando a janela foi encerrad pelo botão superior
         self.playerWindow.protocol("WM_DELETE_WINDOW", self.finish_streaming)
@@ -162,9 +184,9 @@ class ClientModule:
 
         self.mainWindow.mainloop()
 
+
     def receive_frames(self):
         while not self.finished:
-            self.client_socket.settimeout(2)  # setando timeout do socket
             try:
                 frame_segment, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
             except socket.timeout:
@@ -173,15 +195,22 @@ class ClientModule:
                 return
 
             # verificando se o segmento do frame atual eh maior que 1, se for adiciona seus dados a data
-            if struct.unpack("B", frame_segment[0:1])[0] > 1:
-                self.data += frame_segment[1:]
-            # senao, comeca a realizar o decode dos bytes do video
+            message = struct.unpack("?", frame_segment[0:1])[0]
+            if(message == True):
+                frame_segment = frame_segment[1:]
+                if struct.unpack("B", frame_segment[0:1])[0] > 1:
+                    self.data += frame_segment[1:]
+                # senao, comeca a realizar o decode dos bytes do video
+                else:
+                    self.data += frame_segment[1:]
+                    self.image = cv2.imdecode(np.fromstring(self.data, dtype=np.uint8), 1)
+                    if not self.buffered:
+                        self.buffered = True
+                    self.data = b""
             else:
-                self.data += frame_segment[1:]
-                self.image = cv2.imdecode(np.fromstring(self.data, dtype=np.uint8), 1)
-                if not self.buffered:
-                    self.buffered = True
-                self.data = b""
+                frame_segment = frame_segment[1:]
+                self.audio_frame_list.append(frame_segment)
+
         self.close_stream()
 
     # Atualiza os frames na window que possui o player a cada self.interval até que o streamming seja finalizado
