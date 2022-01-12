@@ -1,3 +1,4 @@
+import queue
 import sys
 import socket
 import struct
@@ -8,6 +9,7 @@ from PIL import Image, ImageTk
 import threading
 import time
 import threading, wave, pyaudio
+
 
 class ClientModule:
     MAX_DGRAM_SIZE = 2 ** 16  # tamanho maximo de um datagrama udp
@@ -25,8 +27,8 @@ class ClientModule:
         self.resolution = StringVar()
         self.video_name = StringVar()
 
+        self.audio_frame_list = queue.Queue(maxsize=2000)
 
-        self.audio_frame_list = []
 
         # intervalo de atualização dos frames do player
         self.interval = 20
@@ -41,14 +43,14 @@ class ClientModule:
 
     # Inicializa o socket do client
     def start_client(self):
-        port = 5050
+        port = 5000
         addr = ("", port)
 
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         client_socket.bind(addr)
 
         return client_socket
-    
+
     # Solicita o stream de um video de nome video_name e resolução resolution
     def request_stream(self, video_name, resolution):
         message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution}"
@@ -57,22 +59,26 @@ class ClientModule:
 
         print(f"ENVIANDO PARA SERVIDOR DE STREAMING - {message}")
 
-        self.video_frame_decode()
+        video_thread = threading.Thread(target=self.video_frame_decode())
+        # audio_thread = threading.Thread(target=self.audio_run())
+        video_thread.daemon = True
+        # audio_thread.daemon = True
+        video_thread.start()
+        # audio_thread.start()
 
     # Solicita o streaming do video selecionado
     def stream_selected_video(self):
         self.request_stream(self.video_name.get(), self.resolution.get())
 
-
     def audio_run(self):
-        stream = self.audio_frame_decode()
-        while(not self.finished):
-            for frame in self.audio_frame_list:
-                if(self.finished):
-                    return
-                stream.write(frame)
-                self.audio_frame_list.remove(frame)
+        stream, p = self.audio_frame_decode()
+        while (not self.finished):
+            frame = self.audio_frame_list.get()
+            stream.write(frame)
 
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
 
     def audio_frame_decode(self):
         # self.client_socket.sendto(b'Ack', (self.server_addr, self.server_port))
@@ -81,23 +87,22 @@ class ClientModule:
         # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
         # a partir do próprio arquivo wave aberto anteriormente
         CHUNK = 1024
-        stream = p.open(format=p.get_format_from_width(2),
+        FORMAT = pyaudio.paInt16
+        stream = p.open(format=FORMAT,  # p.get_format_from_width(2),
                         channels=2,
                         rate=44100,
                         output=True,
                         frames_per_buffer=CHUNK)
-
-
         # lemos <chunck> bytes por vez do stream e o enviamos <write> para o dispositivo
         # padrão de saída de audio. Quando termina de ler sai fora do loop
         # audio_data = []
         # self.client_socket.settimeout(1)
-        return stream
-                
+        return stream, p
 
     # Recebe os bytes do video através do servidor, decodifica e reproduz o vídeo
     def video_frame_decode(self):
         self.data = b""
+        #time.sleep(2)
         while True:
             try:
                 # verificao para ver se buffering esta acabando
@@ -131,7 +136,7 @@ class ClientModule:
         windowThread.start()
 
         audio_thread = threading.Thread(target=self.audio_run)
-        audio_thread.start() 
+        audio_thread.start()
 
         # Callback para quando a janela foi encerrad pelo botão superior
         self.playerWindow.protocol("WM_DELETE_WINDOW", self.finish_streaming)
@@ -184,7 +189,6 @@ class ClientModule:
 
         self.mainWindow.mainloop()
 
-
     def receive_frames(self):
         while not self.finished:
             try:
@@ -196,7 +200,7 @@ class ClientModule:
 
             # verificando se o segmento do frame atual eh maior que 1, se for adiciona seus dados a data
             message = struct.unpack("?", frame_segment[0:1])[0]
-            if(message == True):
+            if (message == True):
                 frame_segment = frame_segment[1:]
                 if struct.unpack("B", frame_segment[0:1])[0] > 1:
                     self.data += frame_segment[1:]
@@ -209,7 +213,7 @@ class ClientModule:
                     self.data = b""
             else:
                 frame_segment = frame_segment[1:]
-                self.audio_frame_list.append(frame_segment)
+                self.audio_frame_list.put(frame_segment)
 
         self.close_stream()
 
@@ -248,6 +252,7 @@ class ClientModule:
         # esperando resposta do servidor
         answer, _ = self.client_socket.recvfrom(4096)
         return answer.decode("utf-8")
+
 
 def main():
     if len(sys.argv) > 1:

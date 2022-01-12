@@ -71,10 +71,15 @@ class ServerModule():
             server_socket_audio = self.start_server()
             splitted_data = data.split(' ')
             self.conversor_audio(splitted_data[1]+"_"+splitted_data[2]+".mp4")
+            video_thread = threading.Thread(target=self.play_video,args=(data, client_address, server_socket_video, splitted_data))
             audio_thread = threading.Thread(target=self.play_audio, args=(data,client_address,server_socket_audio,splitted_data))
-            video_thread = threading.Thread(target=self.play_video, args=(data,client_address,server_socket_video,splitted_data))
-            audio_thread.start()
+
+            video_thread.daemon = True
+            audio_thread.daemon = True
+
             video_thread.start()
+            audio_thread.start()
+
         return
 
     def list_videos(self):  # resgatando lista de videos disponiveis
@@ -144,18 +149,11 @@ class ServerModule():
         # abrimos um arquivo
         wavfile = wave.open(audio_string, 'rb')
 
-        # criamos um objeto pyaudio para manipular o arquivo
-        audioobj = pyaudio.PyAudio()
 
         # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
         # a partir do próprio arquivo wave aberto anteriormente
         CHUNK = 1024
-        stream = audioobj.open(
-            format=audioobj.get_format_from_width(wavfile.getsampwidth()),
-            channels=wavfile.getnchannels(),
-            rate=wavfile.getframerate(),
-            input=True,
-            frames_per_buffer=CHUNK)
+
 
         print(f"RECEBIDA CHAMADA AUDIO PARA {client_address[0]} {server_socket}")
 
@@ -163,6 +161,7 @@ class ServerModule():
         data = None
         sample_rate = wavfile.getframerate()
         cnt = 0
+        frame = 1
         while True:
             if(client_address[0] in self.client_stop_list):
                 self.client_stop_list.remove(client_address[0])
@@ -170,7 +169,9 @@ class ServerModule():
             frame = wavfile.readframes(CHUNK)
             print("ENVIANDO AUDIO PARA "+ client_address[0])
             server_socket.sendto(struct.pack("?", False) + frame, client_address)
-            # time.sleep(0.8 * self.MAX_AUDIO_DGRAM_SIZE / sample_rate)
+
+            #time.sleep(0.1 * CHUNK / sample_rate)
+
             if cnt > (wavfile.getnframes() / CHUNK):
                 break
             cnt += 1
@@ -179,12 +180,9 @@ class ServerModule():
         # message = message.encode()
         # server_socket.sendto(message, client_address)
         print(f"FIM AUDIO PARA {client_address[0]}")
-        # para de enviar o fluxo para o dispositivo de saida
-        stream.stop_stream()
-        # fecha o fluxo
-        stream.close()
-        # libera os recursos dedicados ao obj de audio
-        audioobj.terminate()
+
+
+
         # fecha o arquivo wave
         wavfile.close()
         
