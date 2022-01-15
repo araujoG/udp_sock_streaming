@@ -29,7 +29,6 @@ class ClientModule:
 
         self.audio_frame_list = queue.Queue(maxsize=2000)
 
-
         # intervalo de atualização dos frames do player
         self.interval = 20
         # imagem recebida do servidor
@@ -38,6 +37,7 @@ class ClientModule:
         self.image1 = None
         self.buffered = False
         self.finished = False
+        self.finish_audio = False
 
         self.data = b""
 
@@ -72,13 +72,18 @@ class ClientModule:
 
     def audio_run(self):
         stream, p = self.audio_frame_decode()
-        while (not self.finished):
+        while (not self.finish_audio):
             frame = self.audio_frame_list.get()
             stream.write(frame)
-
+            print(".")
+        print("pos loop audio")
         stream.stop_stream()
+        print("pos stop stream")
         stream.close()
+        print("pos close stream")
         p.terminate()
+        self.audio_frame_list.queue.clear()
+        print("fim audio")
 
     def audio_frame_decode(self):
         # self.client_socket.sendto(b'Ack', (self.server_addr, self.server_port))
@@ -138,16 +143,18 @@ class ClientModule:
         audio_thread = threading.Thread(target=self.audio_run)
         audio_thread.start()
 
-        # Callback para quando a janela foi encerrad pelo botão superior
+        # Callback para quando a janela foi encerrada pelo botão superior
         self.playerWindow.protocol("WM_DELETE_WINDOW", self.finish_streaming)
         self.playerWindow.mainloop()
 
-        # Aguarda até as duas threads terminarem
+        # Aguarda até as tres threads terminarem
         windowThread.join()
+        audio_thread.join()
         bufferThread.join()
 
         print("reiniciando variaveis")
         self.finished = False
+        self.finish_audio = False
         self.buffered = False
 
         self.playerWindow.destroy()
@@ -155,6 +162,7 @@ class ClientModule:
     # Encerra o loop da janela do player e indica que o streaming deve ser interrrompido
     def finish_streaming(self):
         self.finished = True
+        self.finish_audio = True
         # quit ou destroy devem sempre ser mantidos na main thread
         self.playerWindow.quit()
 
@@ -195,6 +203,7 @@ class ClientModule:
                 frame_segment, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
             except socket.timeout:
                 self.finished = True
+                self.finish_audio = True
                 self.close_stream()
                 return
 
@@ -223,7 +232,12 @@ class ClientModule:
         if not self.buffered:
             self.playerWindow.after(self.interval, self.update_image)
             return
-        self.image1 = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)  # to RGB
+        try:
+            self.image1 = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB) # to RGB
+        except:
+            while(self.image is None):
+                pass
+            self.image1 = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB) # to RGB
         self.image1 = Image.fromarray(self.image1)
         self.image1 = ImageTk.PhotoImage(image=self.image1)
         self.canvas.config(width=self.image1.width(), height=self.image1.height())
@@ -236,13 +250,16 @@ class ClientModule:
         # envia pacote para parar com o envio dos pacotes do video para o servidor
         print("parando streaming")
         message = b"PARAR_STREAMING"
+        print("mandando mensagem de parada")
         self.client_socket.sendto(message, (self.server_addr, self.server_port))
-        # time.sleep(1)
+        print("mensagem de parada enviada")
+        time.sleep(1)
         # resgatando possivel pacote que "sobrou" do envio do video do servidor
         try:
             _, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
         except socket.timeout:
             pass
+        print("streamming parado")
         return
 
     # Solicita uma resposta para o server através de uma request(mensagem)

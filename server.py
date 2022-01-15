@@ -5,26 +5,33 @@ import cv2
 import pickle
 import struct
 import math
+import os
 import time
+from tkinter import *
 import wave
 import pyaudio
+import json
 import moviepy.editor as mp
 from numpy import array
 from moviepy.editor import *
-
 
 class ServerModule():
     MAX_DGRAM_SIZE = 2 ** 16  # tamanho maximo do pacote udp
     MAX_FRAME_DGRAM_SIZE = MAX_DGRAM_SIZE - 64  # evitar overflow no pacote
     MAX_AUDIO_DGRAM_SIZE = math.ceil(MAX_DGRAM_SIZE - (2 ** 16)/2)
 
-
     def __init__(self):
         self.port = 6000
         self.server_socket = self.start_server()  # iniciando socket da thread principal
         self.client_stop_list = []  # lista de request para parada de streaming
 
-        self.serve_clients()  # iniciando servico
+        self.mainWindow = Tk()
+        self.mainWindow.title("Server")
+        self.resolution = StringVar()
+        self.video_name = StringVar()
+        self.keep_running = True
+
+        self.available_videos = self.get_available_videos()
 
     # iniciando server
     def start_server(self):  # iniciando novo socket udp
@@ -33,13 +40,100 @@ class ServerModule():
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind(addr)
+        server_socket.settimeout(0.1)
 
         print(f"SERVIDOR INICIADO {addr}")
         return server_socket
 
+    def open_include_window(self):  # janela para incluir um video
+        # A janela que contém o player do streaming é aberta
+        self.includeWindow = Toplevel(self.mainWindow)
+
+        texto = Label(
+            self.includeWindow, text="Selecione um vídeo para disponibiliza-lo no streaming:"
+        )
+        texto.pack(padx="10", pady="10")
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.list_videos_in_folder()
+        if OPTIONS == [] :
+            OPTIONS = [""]
+
+        self.video_name.set(OPTIONS[0])
+
+        bottomframe = Frame(self.includeWindow)
+        bottomframe.pack(side=BOTTOM)
+
+        inputframe = Frame(self.includeWindow)
+        inputframe.pack(side=BOTTOM, padx=10)
+
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=LEFT)
+
+        submit_button = Button(
+            bottomframe, text="Disponibilizar Vídeo", command=self.include_video
+        )
+        submit_button.pack(side=BOTTOM, padx=10, pady=10)
+
+    def open_remove_window(self):  # janela para remover um video disponível
+        # A janela que contém o player do streaming é aberta
+        self.removeWindow = Toplevel(self.mainWindow)
+
+        texto = Label(
+            self.removeWindow, text="Selecione um dos vídeos disponíveis no streaming para removê-lo:"
+        )
+        texto.pack(padx="10", pady="10")
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.available_videos
+        if OPTIONS == [] :
+            OPTIONS = [""]
+
+        self.video_name.set(OPTIONS[0])
+
+        bottomframe = Frame(self.removeWindow)
+        bottomframe.pack(side=BOTTOM)
+
+        inputframe = Frame(self.removeWindow)
+        inputframe.pack(side=BOTTOM, padx=10)
+
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=LEFT)
+
+        submit_button = Button(
+            bottomframe, text="Remover Vídeo", command=self.remove_video
+        )
+        submit_button.pack(side=BOTTOM, padx=10, pady=10)
+
+    def open_main_window(self):
+        server_thread = threading.Thread(target=self.serve_clients)
+        server_thread.start()
+
+        texto = Label(
+            self.mainWindow, text="Gerencie os vídeos disponíveis no streaming:"
+        )
+        texto.pack(padx="10", pady="10")
+
+        include_button = Button(
+            self.mainWindow, text="Incluir Vídeo", command=self.open_include_window
+        )
+        remove_button = Button(
+            self.mainWindow, text="Remover Vídeo", command=self.open_remove_window
+        )
+        include_button.pack(side=BOTTOM, padx=10, pady=10)
+        remove_button.pack(side=BOTTOM, padx=10, pady=10)
+
+        self.mainWindow.protocol("WM_DELETE_WINDOW", self.close_server)
+
+        self.mainWindow.mainloop()
+
+
+    def close_server(self):
+        print("Fechando servidor...")
+        self.keep_running = False
+        self.mainWindow.quit()
+
     def serve_clients(self):
         print(f"ESPERANDO PRIMEIRO COMANDO DE CLIENTE")
-        while (True):
+        while (self.keep_running):
             try:
                 data, client_address = self.server_socket.recvfrom(1024)  # recebendo pacote com comando do cliente
                 print(f"COMANDO DE CLIENTE RECEBIDO {client_address[0]} - {data.decode('utf-8')}")
@@ -51,8 +145,10 @@ class ServerModule():
                     data, client_address))  # iniciando thread para servir um cliente
                     client_thread.daemon = True  # thread independente
                     client_thread.start()
+            except socket.timeout:
+                continue
             except KeyboardInterrupt:
-                break
+                continue
                 
     def single_client_serving(self,data,client_address): #iniciando servico de um cliente qualquer
         data = data.decode('utf-8')
@@ -79,17 +175,42 @@ class ServerModule():
 
             video_thread.start()
             audio_thread.start()
-
         return
 
     def list_videos(self):  # resgatando lista de videos disponiveis
+        message = "\n".join(self.available_videos)
+        message = message.encode()
+        return message
+    
+    def include_video(self):  # para incluir um video no catalogo
+        if self.video_name.get() == "":
+            return
+        self.available_videos.append(self.video_name.get())
+        self.write_available_videos()
+        self.includeWindow.destroy()
+
+    def remove_video(self):  # para remover um video do catalogo
+        if self.video_name.get() == "":
+            return
+        self.available_videos.remove(self.video_name.get())
+        self.write_available_videos()
+        self.removeWindow.destroy()
+
+    def get_available_videos(self):
+        data = json.load(open('catalogo.json'))
+        return data['videos']
+    
+    def write_available_videos(self):
+        with open("catalogo.json", 'w') as f:
+            json.dump({"videos":self.available_videos}, f)
+
+    def list_videos_in_folder(self):  # listando videos
         filenames = os.listdir('./videos/')
         output = set()
         for file in filenames:
             output.add(file.strip(".mp4").split("_")[0])
-        message = "\n".join(output)
-        message = message.encode()
-        return message
+        output -= set(self.available_videos)
+        return list(output)
 
     def play_video(self, data, client_address, server_socket,splitted_data):
         video_name = splitted_data[1]
@@ -130,21 +251,23 @@ class ServerModule():
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
-    def conversor_audio(self, video_name):  # para pegar o audio do video e vonverter em um arquivo wav
+    def conversor_audio(self, video_name):  # para pegar o audio do video e converter em um arquivo wav
         my_clip = mp.VideoFileClip(r"./videos/" + video_name)  # para importar o video
 
         while video_name[-1] != ".":  # para deletar o mp4 do nome do arquivo
             video_name = video_name[:-1]
 
-        video_name = video_name + "wav"  # adicionando o tipo do arquivo no final do nome
+        video_name = video_name.split("_")[0] + ".wav"  # adicionando o tipo do arquivo no final do nome
 
+        if os.path.isfile(f"audios/{video_name}"):
+            return
         my_clip.audio.write_audiofile(r"./audios/" + video_name)  # transforma o audio em um arquivo wav
 
     def play_audio(self, data, client_address, server_socket,splitted_data):  # roda o audio
         # chunck mostra quantos pontos iremos ler por vez no arquivo wave
         audio_name = splitted_data[1]
         resolution = splitted_data[2]
-        audio_string = './audios/' + audio_name + '_' + resolution + '.wav'  # path do audio
+        audio_string = './audios/' + audio_name + '.wav'  # path do audio
 
         # abrimos um arquivo
         wavfile = wave.open(audio_string, 'rb')
@@ -181,13 +304,13 @@ class ServerModule():
         # server_socket.sendto(message, client_address)
         print(f"FIM AUDIO PARA {client_address[0]}")
 
-
-
         # fecha o arquivo wave
         wavfile.close()
         
 def main():
-    ServerModule()
+    server = ServerModule()
+    server.open_main_window()
+
 
 if __name__ == "__main__":
     main()
