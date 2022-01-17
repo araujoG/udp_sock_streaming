@@ -55,6 +55,7 @@ class ManagerModule:
           print(f"ENVIANDO 'SAIR_DA_APP_ACK' PARA {addr[0]}")
           conn.send(b"SAIR_DA_APP_ACK")
           print("enviada")
+          self.remove(conn)
         # if message != "":
         #   print ("<" + addr[0] + "> " + message)
 
@@ -83,6 +84,7 @@ class ManagerModule:
   def remove(self, connection):
     if connection in self.list_of_clients:
         self.list_of_clients.remove(connection)
+        print("CONEXÃO REMOVIDA")
 
   def serve_clients(self):
     while True:
@@ -93,7 +95,8 @@ class ManagerModule:
 
       print (addr[0] + " connected")
 
-      self.clientthread(conn, addr)
+      clientThread = threading.Thread(target=self.clientthread, args=(conn, addr))
+      clientThread.start()
 
 def main():
   server = ManagerModule()

@@ -207,7 +207,6 @@ class ClientModule:
         managerListenThread = threading.Thread(target=self.receive_from_manager)
         managerListenThread.start()
 
-
         self.mainWindow.protocol("WM_DELETE_WINDOW", lambda arg="SAIR_DA_APP": self.send_msg_manager(arg))
         self.mainWindow.mainloop()
 
@@ -319,7 +318,6 @@ def main():
         client = ClientModule(server_addr)
         # iniciando servico de comunicacao com o servidor
         client.main_window()
-
 
 if __name__ == "__main__":
     main()
