@@ -1,3 +1,4 @@
+from ast import arg
 import queue
 import select
 import sys
@@ -57,7 +58,6 @@ class ClientModule:
         self.client_socket.bind(addr)
 
         self.manager_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.manager_socket.settimeout(0.5)
         self.manager_socket.connect((self.server_addr, self.manager_port))
 
     # Solicita o stream de um video de nome video_name e resolução resolution
@@ -207,34 +207,36 @@ class ClientModule:
         managerListenThread = threading.Thread(target=self.receive_from_manager)
         managerListenThread.start()
 
+
+        self.mainWindow.protocol("WM_DELETE_WINDOW", lambda arg="SAIR_DA_APP": self.send_msg_manager(arg))
         self.mainWindow.mainloop()
 
+        print("depois da mainloop")
+        self.mainWindow.destroy()
         self.exit_flag = True
 
     def receive_from_manager(self):
         while not self.exit_flag:
             # maintains a list of possible input streams
-            sockets_list = [sys.stdin, self.manager_socket]
-    
             # read_sockets,write_socket, error_socket = select.select(sockets_list,[],[])
             try:    
                 message = self.manager_socket.recv(2048)
-                print(message)
+                message = message.decode()
+                print(f"RECEBIDO '{message}' DO MANAGER")
+                if message == "SAIR_DA_APP_ACK":
+                    print("SAINDO ACK")
+                    self.exit_flag = True
+                    self.mainWindow.quit()
             except socket.timeout:
-                self.manager_socket.send(b'Timeout')
                 continue
-
-            # for socks in read_sockets:
-            #     if socks == self.manager_socket:
-            #         message = socks.recv(2048)
-            #         print(message)
-                # else:
-                #     message = sys.stdin.readline()
-                #     self.manager_socket.send(message)
-                #     sys.stdout.write("<You>")
-                #     sys.stdout.write(message)
-                #     sys.stdout.flush()
         self.manager_socket.close()
+        print("fechou socket manager")
+
+    def send_msg_manager(self, msg):
+        print(f"ENVIANDO '{msg}' PARA O MANAGER")
+        message = msg.encode()
+        self.manager_socket.send(message)
+        print("mensagem enviada")         
 
     def receive_frames(self):
         while not self.finished:
