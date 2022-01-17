@@ -1,4 +1,5 @@
 import queue
+import select
 import sys
 import socket
 import struct
@@ -6,7 +7,6 @@ from tkinter import *
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
-import threading
 import time
 import threading, wave, pyaudio
 
@@ -16,11 +16,17 @@ class ClientModule:
 
     def __init__(self, server_addr):
         # iniciando socket do cliente
-        self.client_socket = self.start_client()
+        self.client_socket = None
         # porta utilizada pelo servidor
         self.server_port = 6000
         # endereco ipv4 do servidor
         self.server_addr = server_addr
+
+        self.manager_socket = None
+
+        self.manager_port = 5000
+
+        self.exit_flag = False
 
         self.mainWindow = Tk()
         self.mainWindow.title("Streaming")
@@ -40,16 +46,19 @@ class ClientModule:
         self.finish_audio = False
 
         self.data = b""
+        self.start_client()
 
     # Inicializa o socket do client
     def start_client(self):
-        port = 5000
+        port = 5030 # 5050
         addr = ("", port)
 
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        client_socket.bind(addr)
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.client_socket.bind(addr)
 
-        return client_socket
+        self.manager_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.manager_socket.settimeout(0.5)
+        self.manager_socket.connect((self.server_addr, self.manager_port))
 
     # Solicita o stream de um video de nome video_name e resolução resolution
     def request_stream(self, video_name, resolution):
@@ -195,7 +204,37 @@ class ClientModule:
         )
         submit_button.pack(side=BOTTOM, padx=10, pady=10)
 
+        managerListenThread = threading.Thread(target=self.receive_from_manager)
+        managerListenThread.start()
+
         self.mainWindow.mainloop()
+
+        self.exit_flag = True
+
+    def receive_from_manager(self):
+        while not self.exit_flag:
+            # maintains a list of possible input streams
+            sockets_list = [sys.stdin, self.manager_socket]
+    
+            # read_sockets,write_socket, error_socket = select.select(sockets_list,[],[])
+            try:    
+                message = self.manager_socket.recv(2048)
+                print(message)
+            except socket.timeout:
+                self.manager_socket.send(b'Timeout')
+                continue
+
+            # for socks in read_sockets:
+            #     if socks == self.manager_socket:
+            #         message = socks.recv(2048)
+            #         print(message)
+                # else:
+                #     message = sys.stdin.readline()
+                #     self.manager_socket.send(message)
+                #     sys.stdout.write("<You>")
+                #     sys.stdout.write(message)
+                #     sys.stdout.flush()
+        self.manager_socket.close()
 
     def receive_frames(self):
         while not self.finished:
