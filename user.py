@@ -25,11 +25,24 @@ class User:
     data['users'].append(self.__dict__())
     json.dump(data, open('users_list.json', 'w'))
 
+  def get_type(self):
+    if self.type == 0:
+      return 'Convidade'
+    return "Premium"
+
   @staticmethod
   def get_user_information(id):
     data = json.load(open('users_list.json'))
     for user in data['users']:
       if user['id'] == id:
+        return str(user)
+    return None
+
+  @staticmethod
+  def get_user_by_ip(ip):
+    data = json.load(open('users_list.json'))
+    for user in data['users']:
+      if user['ip'] == ip:
         return str(user)
     return None
   

@@ -20,9 +20,12 @@ class ServerModule():
     MAX_FRAME_DGRAM_SIZE = MAX_DGRAM_SIZE - 64  # evitar overflow no pacote
     MAX_AUDIO_DGRAM_SIZE = math.ceil(MAX_DGRAM_SIZE - (2 ** 16)/2)
 
-    def __init__(self):
+    def __init__(self,manager_addr):
+        self.manager_addr = manager_addr
         self.port = 6000
+        self.manager_port = 5000
         self.server_socket = self.start_server()  # iniciando socket da thread principal
+        self.manager_socket = self.start_manager_connection()
         self.client_stop_list = []  # lista de request para parada de streaming
 
         self.mainWindow = Tk()
@@ -34,6 +37,12 @@ class ServerModule():
         self.available_videos = self.get_available_videos()
 
     # iniciando server
+    def start_manager_connection(self):
+        manager_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        manager_socket.connect((self.manager_addr, self.manager_port))
+
+        return manager_socket
+
     def start_server(self):  # iniciando novo socket udp
         addr = ("", self.port)
 
@@ -104,6 +113,7 @@ class ServerModule():
         submit_button.pack(side=BOTTOM, padx=10, pady=10)
 
     def open_main_window(self):
+
         server_thread = threading.Thread(target=self.serve_clients)
         server_thread.start()
 
@@ -130,25 +140,60 @@ class ServerModule():
         print("Fechando servidor...")
         self.keep_running = False
         self.mainWindow.quit()
+    
+    def get_user_info(self,user_id):
+        message = f"GET_USER_INFORMATION {user_id}"
+        self.manager_socket.send(message.encode())
+        message = self.manager_socket.recv(2048)
+        message = message.decode()
+        return message
+    
+    def verify_premium(self,user_info):
+        if(int(user_info.split()[6].strip(",\"\'")) == 1):
+            return 1
+        else:
+            return 0
+        
 
     def serve_clients(self):
         print(f"ESPERANDO PRIMEIRO COMANDO DE CLIENTE")
         while (self.keep_running):
             try:
                 data, client_address = self.server_socket.recvfrom(1024)  # recebendo pacote com comando do cliente
+                message = data.decode('utf-8')
                 print(f"COMANDO DE CLIENTE RECEBIDO {client_address[0]} - {data.decode('utf-8')}")
-                if ("PARAR_STREAMING" == data.decode('utf-8')):  # request de parada de streaming
+                if ("PARAR_STREAMING" in data.decode('utf-8')):  # request de parada de streaming
                     self.client_stop_list.append(client_address[0])
                     continue
                 else:
-                    client_thread = threading.Thread(target=self.single_client_serving, args=(
-                    data, client_address))  # iniciando thread para servir um cliente
-                    client_thread.daemon = True  # thread independente
-                    client_thread.start()
+                    if("REPRODUZIR_VIDEO" in data.decode()):
+                        user_id = message.split(" ")[-1]
+                        user_info = self.get_user_info(user_id)
+                        print(user_info)
+                        premium = self.verify_premium(user_info)
+                        print(premium)
+                        if(premium == 0):
+                            message = b"RESPOSTA - NAO TEM PERMISSAO PARA REPRODUZIR VIDEOS, POR FAVOR MUDE SUA CLASSIFICACAO"
+                            self.server_socket.sendto(message,client_address)
+                        else:
+                            splitted_data = data.decode().split(' ')
+                            nome_video = splitted_data[1]
+                            qualidade_video = splitted_data[2]
+                            message = f"RESPOSTA - REPRODUZINDO O VIDEO {nome_video}, COM RESOLUCAO {qualidade_video}"
+                            self.server_socket.sendto(message.encode(),client_address)
+                            client_thread = threading.Thread(target=self.single_client_serving, args=(
+                            data, client_address))  # iniciando thread para servir um cliente
+                            client_thread.daemon = True  # thread independente
+                            client_thread.start()
+                    else:
+                        client_thread = threading.Thread(target=self.single_client_serving, args=(
+                        data, client_address))  # iniciando thread para servir um cliente
+                        client_thread.daemon = True  # thread independente
+                        client_thread.start()
             except socket.timeout:
                 continue
             except KeyboardInterrupt:
-                continue
+                quit()
                 
     def single_client_serving(self,data,client_address): #iniciando servico de um cliente qualquer
         data = data.decode('utf-8')
@@ -308,8 +353,10 @@ class ServerModule():
         wavfile.close()
         
 def main():
-    server = ServerModule()
-    server.open_main_window()
+    if len(sys.argv) > 1:
+        manager_addr = sys.argv[1]
+        server = ServerModule(manager_addr)
+        server.open_main_window()
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import socket
 import struct
 from tkinter import *
 import cv2
+from matplotlib.style import use
 import numpy as np
 from PIL import Image, ImageTk
 import time
@@ -45,6 +46,8 @@ class ClientModule:
         self.buffered = False
         self.finished = False
         self.finish_audio = False
+        self.user_id = None #ID USUARIO
+        self.premium = None #PREMIUM
 
         self.data = b""
         self.start_client()
@@ -59,21 +62,30 @@ class ClientModule:
 
         self.manager_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.manager_socket.connect((self.server_addr, self.manager_port))
+        
+
 
     # Solicita o stream de um video de nome video_name e resolução resolution
     def request_stream(self, video_name, resolution):
-        message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution}"
+        message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution} {self.user_id}" #ADICIONANDO USER_ID
         message = message.encode()
         self.client_socket.sendto(message, (self.server_addr, self.server_port))
 
         print(f"ENVIANDO PARA SERVIDOR DE STREAMING - {message}")
 
-        video_thread = threading.Thread(target=self.video_frame_decode())
-        # audio_thread = threading.Thread(target=self.audio_run())
-        video_thread.daemon = True
-        # audio_thread.daemon = True
-        video_thread.start()
-        # audio_thread.start()
+        message,_ = self.client_socket.recvfrom(2048)
+        message = message.decode()
+        if("REPRODUZINDO" in message):
+            print(message)
+
+            video_thread = threading.Thread(target=self.video_frame_decode())
+            # audio_thread = threading.Thread(target=self.audio_run())
+            video_thread.daemon = True
+            # audio_thread.daemon = True
+            video_thread.start()
+            # audio_thread.start()
+        else:
+            print(message) #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
 
     # Solicita o streaming do video selecionado
     def stream_selected_video(self):
@@ -177,6 +189,7 @@ class ClientModule:
 
     # Carrega a janela principal da aplicação
     def main_window(self):
+        self.login("admin", 0)
         texto = Label(
             self.mainWindow, text="Selecione um vídeo e uma resolução para reproduzir"
         )
@@ -217,7 +230,6 @@ class ClientModule:
     def receive_from_manager(self):
         while not self.exit_flag:
             # maintains a list of possible input streams
-            # read_sockets,write_socket, error_socket = select.select(sockets_list,[],[])
             try:    
                 message = self.manager_socket.recv(2048)
                 message = message.decode()
@@ -226,16 +238,27 @@ class ClientModule:
                     print("SAINDO ACK")
                     self.exit_flag = True
                     self.mainWindow.quit()
+                elif message == "ENTRAR_NA_APP_ACK":
+                    print("ENTRANDO ACK")
+                    # TODO IR PARA A TELA LOGADA
+                elif message.startswith("STATUS_DO_USUARIO"):
+                    ip, type, members = message.split(" ")
+                    # TODO  MOSTRAR NA TELA AS INFOS DO USUÁRIO
             except socket.timeout:
                 continue
         self.manager_socket.close()
         print("fechou socket manager")
 
+    def login(self, name, type):
+        host = socket.gethostname()
+        ip = socket.gethostbyname(host)
+        self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}")
+
     def send_msg_manager(self, msg):
         print(f"ENVIANDO '{msg}' PARA O MANAGER")
         message = msg.encode()
         self.manager_socket.send(message)
-        print("mensagem enviada")         
+        print("mensagem enviada")
 
     def receive_frames(self):
         while not self.finished:
