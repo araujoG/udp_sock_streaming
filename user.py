@@ -35,7 +35,7 @@ class User:
     data = json.load(open('users_list.json'))
     for user in data['users']:
       if user['id'] == id:
-        return str(user)
+        return f"{user['id']} {user['name']} {user['type']} {user['ip']}"
     return None
 
   @staticmethod
@@ -43,7 +43,7 @@ class User:
     data = json.load(open('users_list.json'))
     for user in data['users']:
       if user['ip'] == ip:
-        return str(user)
+        return f"{user['id']} {user['name']} {user['type']} {user['ip']}"
     return None
   
   @staticmethod
@@ -58,6 +58,10 @@ class User:
     data = json.load(open('users_list.json'))
     data['users'] = [user for user in data['users'] if user['ip'] != ip]
     json.dump(data, open('users_list.json', 'w'))
+
+  @staticmethod
+  def fromDict(d):
+    return User(d['name'], d['type'], d['ip'])
 
 def main():
   user = User('teste', 'admin', f'{int(random() * 100)}')

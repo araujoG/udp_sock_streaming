@@ -6,11 +6,11 @@ import socket
 import struct
 from tkinter import *
 import cv2
-from matplotlib.style import use
 import numpy as np
 from PIL import Image, ImageTk
 import time
 import threading, wave, pyaudio
+from user import User
 
 
 class ClientModule:
@@ -46,8 +46,9 @@ class ClientModule:
         self.buffered = False
         self.finished = False
         self.finish_audio = False
-        self.user_id = None #ID USUARIO
-        self.premium = None #PREMIUM
+
+         # ID USUARIO
+        self.user_id = None
 
         self.data = b""
         self.start_client()
@@ -62,68 +63,78 @@ class ClientModule:
 
         self.manager_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.manager_socket.connect((self.server_addr, self.manager_port))
-        
 
+    # Carrega a janela principal da aplicação
+    def open_main_window(self):
+        pass
 
-    # Solicita o stream de um video de nome video_name e resolução resolution
-    def request_stream(self, video_name, resolution):
-        message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution} {self.user_id}" #ADICIONANDO USER_ID
-        message = message.encode()
-        self.client_socket.sendto(message, (self.server_addr, self.server_port))
+    def open_premium_window(self):
+        self.login("admin", 0)
+        texto = Label(
+            self.mainWindow, text="Selecione um vídeo e uma resolução para reproduzir"
+        )
+        texto.pack(padx="10", pady="10")
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
 
-        print(f"ENVIANDO PARA SERVIDOR DE STREAMING - {message}")
+        self.video_name.set(OPTIONS[0])
 
-        message,_ = self.client_socket.recvfrom(2048)
-        message = message.decode()
-        if("REPRODUZINDO" in message):
-            print(message)
+        bottomframe = Frame(self.mainWindow)
+        bottomframe.pack(side=BOTTOM)
 
-            video_thread = threading.Thread(target=self.video_frame_decode())
-            # audio_thread = threading.Thread(target=self.audio_run())
-            video_thread.daemon = True
-            # audio_thread.daemon = True
-            video_thread.start()
-            # audio_thread.start()
-        else:
-            print(message) #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
+        inputframe = Frame(self.mainWindow)
+        inputframe.pack(side=BOTTOM, padx=10)
 
-    # Solicita o streaming do video selecionado
-    def stream_selected_video(self):
-        self.request_stream(self.video_name.get(), self.resolution.get())
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=LEFT)
 
-    def audio_run(self):
-        stream, p = self.audio_frame_decode()
-        while (not self.finish_audio):
-            frame = self.audio_frame_list.get()
-            stream.write(frame)
-            print(".")
-        print("pos loop audio")
-        stream.stop_stream()
-        print("pos stop stream")
-        stream.close()
-        print("pos close stream")
-        p.terminate()
-        self.audio_frame_list.queue.clear()
-        print("fim audio")
+        a_list = ["240p", "480p", "720p"]
+        spinbox = Spinbox(inputframe, values=a_list, textvariable=self.resolution)
+        spinbox.pack(side=LEFT)
 
-    def audio_frame_decode(self):
-        # self.client_socket.sendto(b'Ack', (self.server_addr, self.server_port))
-        # criamos um objeto pyaudio para manipular o arquivo
-        p = pyaudio.PyAudio()
-        # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
-        # a partir do próprio arquivo wave aberto anteriormente
-        CHUNK = 1024
-        FORMAT = pyaudio.paInt16
-        stream = p.open(format=FORMAT,  # p.get_format_from_width(2),
-                        channels=2,
-                        rate=44100,
-                        output=True,
-                        frames_per_buffer=CHUNK)
-        # lemos <chunck> bytes por vez do stream e o enviamos <write> para o dispositivo
-        # padrão de saída de audio. Quando termina de ler sai fora do loop
-        # audio_data = []
-        # self.client_socket.settimeout(1)
-        return stream, p
+        submit_button = Button(
+            bottomframe, text="Reproduzir", command=self.stream_selected_video
+        )
+        submit_button.pack(side=BOTTOM, padx=10, pady=10)
+
+        managerListenThread = threading.Thread(target=self.receive_from_manager)
+        managerListenThread.start()
+
+        self.mainWindow.protocol("WM_DELETE_WINDOW", lambda arg="SAIR_DA_APP": self.send_msg_manager(arg))
+        self.mainWindow.mainloop()
+
+        print("depois da mainloop")
+        self.mainWindow.destroy()
+        self.exit_flag = True
+    
+    def receive_frames(self):
+        while not self.finished:
+            try:
+                frame_segment, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
+            except socket.timeout:
+                self.finished = True
+                self.finish_audio = True
+                self.close_stream()
+                return
+
+            # verificando se o segmento do frame atual eh maior que 1, se for adiciona seus dados a data
+            message = struct.unpack("?", frame_segment[0:1])[0]
+            if (message == True):
+                frame_segment = frame_segment[1:]
+                if struct.unpack("B", frame_segment[0:1])[0] > 1:
+                    self.data += frame_segment[1:]
+                # senao, comeca a realizar o decode dos bytes do video
+                else:
+                    self.data += frame_segment[1:]
+                    self.image = cv2.imdecode(np.fromstring(self.data, dtype=np.uint8), 1)
+                    if not self.buffered:
+                        self.buffered = True
+                    self.data = b""
+            else:
+                frame_segment = frame_segment[1:]
+                self.audio_frame_list.put(frame_segment)
+
+        self.close_stream()
 
     # Recebe os bytes do video através do servidor, decodifica e reproduz o vídeo
     def video_frame_decode(self):
@@ -180,115 +191,6 @@ class ClientModule:
 
         self.playerWindow.destroy()
 
-    # Encerra o loop da janela do player e indica que o streaming deve ser interrrompido
-    def finish_streaming(self):
-        self.finished = True
-        self.finish_audio = True
-        # quit ou destroy devem sempre ser mantidos na main thread
-        self.playerWindow.quit()
-
-    # Carrega a janela principal da aplicação
-    def main_window(self):
-        self.login("admin", 0)
-        texto = Label(
-            self.mainWindow, text="Selecione um vídeo e uma resolução para reproduzir"
-        )
-        texto.pack(padx="10", pady="10")
-        # Carrega a lista de vídeos do servidor
-        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
-
-        self.video_name.set(OPTIONS[0])
-
-        bottomframe = Frame(self.mainWindow)
-        bottomframe.pack(side=BOTTOM)
-
-        inputframe = Frame(self.mainWindow)
-        inputframe.pack(side=BOTTOM, padx=10)
-
-        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
-        w.pack(side=LEFT)
-
-        a_list = ["240p", "480p", "720p"]
-        spinbox = Spinbox(inputframe, values=a_list, textvariable=self.resolution)
-        spinbox.pack(side=LEFT)
-
-        submit_button = Button(
-            bottomframe, text="Reproduzir", command=self.stream_selected_video
-        )
-        submit_button.pack(side=BOTTOM, padx=10, pady=10)
-
-        managerListenThread = threading.Thread(target=self.receive_from_manager)
-        managerListenThread.start()
-
-        self.mainWindow.protocol("WM_DELETE_WINDOW", lambda arg="SAIR_DA_APP": self.send_msg_manager(arg))
-        self.mainWindow.mainloop()
-
-        print("depois da mainloop")
-        self.mainWindow.destroy()
-        self.exit_flag = True
-
-    def receive_from_manager(self):
-        while not self.exit_flag:
-            # maintains a list of possible input streams
-            try:    
-                message = self.manager_socket.recv(2048)
-                message = message.decode()
-                print(f"RECEBIDO '{message}' DO MANAGER")
-                if message == "SAIR_DA_APP_ACK":
-                    print("SAINDO ACK")
-                    self.exit_flag = True
-                    self.mainWindow.quit()
-                elif message == "ENTRAR_NA_APP_ACK":
-                    print("ENTRANDO ACK")
-                    # TODO IR PARA A TELA LOGADA
-                elif message.startswith("STATUS_DO_USUARIO"):
-                    ip, type, members = message.split(" ")
-                    # TODO  MOSTRAR NA TELA AS INFOS DO USUÁRIO
-            except socket.timeout:
-                continue
-        self.manager_socket.close()
-        print("fechou socket manager")
-
-    def login(self, name, type):
-        host = socket.gethostname()
-        ip = socket.gethostbyname(host)
-        self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}")
-
-    def send_msg_manager(self, msg):
-        print(f"ENVIANDO '{msg}' PARA O MANAGER")
-        message = msg.encode()
-        self.manager_socket.send(message)
-        print("mensagem enviada")
-
-    def receive_frames(self):
-        while not self.finished:
-            try:
-                frame_segment, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
-            except socket.timeout:
-                self.finished = True
-                self.finish_audio = True
-                self.close_stream()
-                return
-
-            # verificando se o segmento do frame atual eh maior que 1, se for adiciona seus dados a data
-            message = struct.unpack("?", frame_segment[0:1])[0]
-            if (message == True):
-                frame_segment = frame_segment[1:]
-                if struct.unpack("B", frame_segment[0:1])[0] > 1:
-                    self.data += frame_segment[1:]
-                # senao, comeca a realizar o decode dos bytes do video
-                else:
-                    self.data += frame_segment[1:]
-                    self.image = cv2.imdecode(np.fromstring(self.data, dtype=np.uint8), 1)
-                    if not self.buffered:
-                        self.buffered = True
-                    self.data = b""
-            else:
-                frame_segment = frame_segment[1:]
-                self.audio_frame_list.put(frame_segment)
-
-        self.close_stream()
-
     # Atualiza os frames na window que possui o player a cada self.interval até que o streamming seja finalizado
     def update_image(self):
         # Verifica se primeiro frame ja foi carregado
@@ -307,6 +209,41 @@ class ClientModule:
         self.canvas.create_image(0, 0, anchor=NW, image=self.image1)
         if not self.finished:
             self.playerWindow.after(self.interval, self.update_image)
+    
+    def audio_frame_decode(self):
+        # self.client_socket.sendto(b'Ack', (self.server_addr, self.server_port))
+        # criamos um objeto pyaudio para manipular o arquivo
+        p = pyaudio.PyAudio()
+        # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
+        # a partir do próprio arquivo wave aberto anteriormente
+        CHUNK = 1024
+        FORMAT = pyaudio.paInt32
+        stream = p.open(format=FORMAT,  # p.get_format_from_width(2),
+                        channels=2,
+                        rate=1411,
+                        output=True,
+                        frames_per_buffer=CHUNK)
+        # lemos <chunck> bytes por vez do stream e o enviamos <write> para o dispositivo
+        # padrão de saída de audio. Quando termina de ler sai fora do loop
+        # audio_data = []
+        # self.client_socket.settimeout(1)
+        return stream, p
+
+    # Reproduz o audio recebido do servidor
+    def audio_run(self):
+        stream, p = self.audio_frame_decode()
+        while (not self.finish_audio):
+            frame = self.audio_frame_list.get()
+            stream.write(frame)
+            print(".")
+        print("pos loop audio")
+        stream.stop_stream()
+        print("pos stop stream")
+        stream.close()
+        print("pos close stream")
+        p.terminate()
+        self.audio_frame_list.queue.clear()
+        print("fim audio")
 
     # Finaliza o streamming no servidor
     def close_stream(self):
@@ -324,7 +261,39 @@ class ClientModule:
             pass
         print("streamming parado")
         return
+    
+    # Encerra o loop da janela do player e indica que o streaming deve ser interrrompido
+    def finish_streaming(self):
+        self.finished = True
+        self.finish_audio = True
+        # quit ou destroy devem sempre ser mantidos na main thread
+        self.playerWindow.quit()
+    
+    # Solicita o streaming do video selecionado
+    def stream_selected_video(self):
+        self.request_stream(self.video_name.get(), self.resolution.get())
 
+    # Solicita o stream de um video de nome video_name e resolução resolution
+    def request_stream(self, video_name, resolution):
+        message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution} {self.user_id}" #ADICIONANDO USER_ID
+        message = message.encode()
+        self.client_socket.sendto(message, (self.server_addr, self.server_port))
+
+        print(f"ENVIANDO PARA SERVIDOR DE STREAMING - {message}")
+
+        message,_ = self.client_socket.recvfrom(2048)
+        message = message.decode()
+        print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
+        if("REPRODUZINDO" in message):
+            video_thread = threading.Thread(target=self.video_frame_decode())
+            # audio_thread = threading.Thread(target=self.audio_run())
+            video_thread.daemon = True
+            # audio_thread.daemon = True
+            video_thread.start()
+            # audio_thread.start()
+        else:
+            pass #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
+    
     # Solicita uma resposta para o server através de uma request(mensagem)
     def request_answer(self, request):
         message = request.encode()
@@ -333,6 +302,40 @@ class ClientModule:
         answer, _ = self.client_socket.recvfrom(4096)
         return answer.decode("utf-8")
 
+    def receive_from_manager(self):
+        print(f"recebendo do manager como id:{self.user_id}")
+        while not self.exit_flag:
+            try:    
+                message = self.manager_socket.recv(2048)
+                print("msg recebida")
+                message = message.decode()
+                print(f"RECEBIDO '{message}' DO MANAGER")
+                if message == "SAIR_DA_APP_ACK":
+                    print("SAINDO ACK")
+                    self.exit_flag = True
+                    self.mainWindow.quit()
+                elif message == "ENTRAR_NA_APP_ACK":
+                    print("ENTRANDO ACK")
+                    # TODO IR PARA A TELA LOGADA
+                elif message.startswith("STATUS_DO_USUARIO"):
+                    msg, ip, type, members = message.split(" ")
+                    print("MOSTRANDO STATUS DO USUARIO")
+                    # TODO  MOSTRAR NA TELA AS INFOS DO USUÁRIO
+            except socket.timeout:
+                continue
+        self.manager_socket.close()
+        print("fechou socket manager")
+
+    def login(self, name, type):
+        ip = self.manager_socket.getsockname()[0]
+        self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}")
+        self.user_id, name, type, ip = User.get_user_by_ip(ip).split(" ")
+
+    def send_msg_manager(self, msg):
+        print(f"ENVIANDO '{msg}' PARA O MANAGER")
+        message = msg.encode()
+        self.manager_socket.send(message)
+        print(f"ENVIOU '{msg}' PARA O MANAGER")
 
 def main():
     if len(sys.argv) > 1:
@@ -340,7 +343,7 @@ def main():
         server_addr = sys.argv[1]
         client = ClientModule(server_addr)
         # iniciando servico de comunicacao com o servidor
-        client.main_window()
+        client.open_premium_window()
 
 if __name__ == "__main__":
     main()

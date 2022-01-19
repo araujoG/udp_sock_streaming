@@ -135,7 +135,6 @@ class ServerModule():
 
         self.mainWindow.mainloop()
 
-
     def close_server(self):
         print("Fechando servidor...")
         self.keep_running = False
@@ -143,17 +142,12 @@ class ServerModule():
     
     def get_user_info(self,user_id):
         message = f"GET_USER_INFORMATION {user_id}"
+        print(f"ENVIANDO '{message}' PARA O MANAGER")
         self.manager_socket.send(message.encode())
         message = self.manager_socket.recv(2048)
         message = message.decode()
-        return message
-    
-    def verify_premium(self,user_info):
-        if(int(user_info.split()[6].strip(",\"\'")) == 1):
-            return 1
-        else:
-            return 0
-        
+        print(f"RECEBIDO '{message}' DO MANAGER")
+        return message.replace("USER_INFORMATION ", "")
 
     def serve_clients(self):
         print(f"ESPERANDO PRIMEIRO COMANDO DE CLIENTE")
@@ -168,13 +162,10 @@ class ServerModule():
                 else:
                     if("REPRODUZIR_VIDEO" in data.decode()):
                         user_id = message.split(" ")[-1]
-                        user_info = self.get_user_info(user_id)
-                        print(user_info)
-                        premium = self.verify_premium(user_info)
-                        print(premium)
-                        if(premium == 0):
+                        id, name, type, ip = self.get_user_info(user_id).split(" ")
+                        if(int(type) == 0):
                             message = b"RESPOSTA - NAO TEM PERMISSAO PARA REPRODUZIR VIDEOS, POR FAVOR MUDE SUA CLASSIFICACAO"
-                            self.server_socket.sendto(message,client_address)
+                            self.server_socket.sendto(message, client_address)
                         else:
                             splitted_data = data.decode().split(' ')
                             nome_video = splitted_data[1]

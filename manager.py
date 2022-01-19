@@ -28,50 +28,55 @@ class ManagerModule:
       try:
         message = conn.recv(2048)
         message = message.decode()
+        print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
         if message.startswith("GET_USER_INFORMATION"):
+          print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
           id = message.split(" ")[1]
           if id.isnumeric():
             id = int(id)
             info1 = User.get_user_information(id)
-            info = "USER_INFORMATION " + info1
+            info = f"USER_INFORMATION {info1}"
+            
             if info1:
-              conn.send(info.encode())
+              msg = info
             else:
-              conn.send(b"USER_NOT_FOUND")
-      except:
+              msg = "USER_NOT_FOUND"
+
+            print(f"ENVIANDO '{msg}' PARA O SERVIDOR DE STREAMING")
+            
+            conn.send(msg.encode())
+      except socket.timeout:
         continue    
   
 
-  def clientthread(self, conn, addr):
-    
+  def client_thread(self, conn, addr):
     print("Connection from:", addr)
-
-  
     while True:
       try:
         message = conn.recv(2048)
         message = message.decode()
+        print(f"RECEBIDO '{message}' DE {addr[0]}")
         if message.startswith("ENTRAR_NA_APP"):
           print(f"RECEBIDO 'ENTRAR_NA_APP' DE {addr[0]}")
           _m, nome, tipo, ip = message.split(" ")
-          user = User.get_user_by_ip(addr[0])
+          user = User.get_user_by_ip(ip)
           if user == None:
             print(f"ENVIANDO 'ENTRAR_NA_APP_ACK' PARA {addr[0]}")
-            conn.send(b"ENTRAR_NA_APP_ACK")
             user = User(nome, tipo, ip)
             user.save()
+            conn.send(b"ENTRAR_NA_APP_ACK")
           else:
-            print(f"ENVIANDO 'STATUS_DO_USUARIO' PARA {addr[0]}")
-            msg = f"STATUS_DO_USUARIO {user.id} {user.type} ---"
-
+            id, name, type, ip = user.split(" ")
+            msg = f"STATUS_DO_USUARIO {id} {type} group"
+            print(f"ENVIANDO '{msg}' PARA {addr[0]}")
             conn.send(msg.encode())
+            print(f"ENVIOU '{msg}' PARA {addr[0]}")
           print("entra na app")
         elif message == "SAIR_DA_APP":
           print(f"RECEBIDO 'SAIR_DA_APP' DE {addr[0]}")
           User.remove_by_ip(addr)
           print(f"ENVIANDO 'SAIR_DA_APP_ACK' PARA {addr[0]}")
           conn.send(b"SAIR_DA_APP_ACK")
-          print("enviada")
           self.remove(conn)
         # if message != "":
         #   print ("<" + addr[0] + "> " + message)
@@ -85,7 +90,7 @@ class ManagerModule:
         #     is broken, in this case we remove the connection"""
         #     self.remove(conn)
 
-      except:
+      except socket.timeout:
           continue
 
   def broadcast(self, message, connection):
@@ -106,7 +111,6 @@ class ManagerModule:
   def serve_clients(self):
     while True:
       conn, addr = self.client_socket.accept()
-      conn.setblocking(0)
       if(self.streaming_connection_up == 0):
         self.streaming_connection_up = 1
         streamingThread = threading.Thread(target=self.streaming_thread, args=(conn, addr))
@@ -117,8 +121,8 @@ class ManagerModule:
 
         print (addr[0] + " connected")
 
-        clientThread = threading.Thread(target=self.clientthread, args=(conn, addr))
-        clientThread.start()
+        client_thread = threading.Thread(target=self.client_thread, args=(conn, addr))
+        client_thread.start()
 
 def main():
   server = ManagerModule()
