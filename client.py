@@ -321,21 +321,42 @@ class ClientModule:
                     msg, ip, type, members = message.split(" ")
                     print("MOSTRANDO STATUS DO USUARIO")
                     # TODO  MOSTRAR NA TELA AS INFOS DO USUÁRIO
+                elif message.startswith("CRIAR_GRUPO_ACK"):
+                    print("GRUPO CRIADO ACK")
+                elif message.startswith("GRUPO_DE_STREAMING"):
+                    message = message.replace("GRUPO_DE_STREAMING ","")
+                    users = message.split(" ")
+                    print(users)
+
             except socket.timeout:
                 continue
         self.manager_socket.close()
         print("fechou socket manager")
 
-    def login(self, name, type):
-        ip = self.manager_socket.getsockname()[0]
-        self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}")
-        self.user_id, name, type, ip = User.get_user_by_ip(ip).split(" ")
+    def login(self, name, type): ##ESTA MOCKADO
+        ip = self.manager_socket.getsockname()[0] ##ESTA MOCKADO
+        self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}") ##ESTA MOCKADO  
+        self.user_id, name, type, ip = User.get_user_by_ip(ip).split(" ") ##ESTA MOCKADO
+        self.show_group()
+        teste = self.manager_socket.recv(2048)
+        teste = teste.decode()
 
     def send_msg_manager(self, msg):
         print(f"ENVIANDO '{msg}' PARA O MANAGER")
         message = msg.encode()
         self.manager_socket.send(message)
         print(f"ENVIOU '{msg}' PARA O MANAGER")
+    
+    def create_group(self):
+        message = f'CRIAR_GRUPO {self.user_id}'
+        self.send_msg_manager(message)
+
+    def show_group(self):
+        message = f'VER_GRUPO {self.user_id}'
+        self.send_msg_manager(message)
+
+
+
 
 def main():
     if len(sys.argv) > 1:

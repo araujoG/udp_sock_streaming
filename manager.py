@@ -78,6 +78,21 @@ class ManagerModule:
           print(f"ENVIANDO 'SAIR_DA_APP_ACK' PARA {addr[0]}")
           conn.send(b"SAIR_DA_APP_ACK")
           self.remove(conn)
+        elif message.startswith("CRIAR_GRUPO"):
+          _,id = message.split(" ")
+          id = int(id)
+          User.add_group_to_user(id)
+          print(f"ENVIANDO 'CRIAR_GRUPO_ACK' PARA {addr[0]}")
+          conn.send(b"CRIAR_GRUPO_ACK")
+          print(f"ENVIOU 'CRIAR_GRUPO_ACK' PARA {addr[0]}")
+        elif message.startswith("VER_GRUPO"):
+          _,id = message.split(" ")
+          id = int(id)
+          users = User.show_group(id)
+          msg = f'GRUPO_DE_STREAMING {users}'
+          print(f"ENVIANDO {msg} PARA {addr[0]}")
+          conn.send(msg.encode())
+          print(f"ENVIOU {msg} PARA {addr[0]}")
         # if message != "":
         #   print ("<" + addr[0] + "> " + message)
 

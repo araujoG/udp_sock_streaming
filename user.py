@@ -1,6 +1,7 @@
 import json
 from random import random
 from types import SimpleNamespace
+from unicodedata import name
 
 class User:
   def __init__(self, name, type, ip):
@@ -29,6 +30,32 @@ class User:
     if self.type == 0:
       return 'Convidade'
     return "Premium"
+
+  @staticmethod
+  def show_group(id):
+    data = json.load(open('users_list.json'))
+    for user in data['users']:
+      if user['id'] == id:
+        users = ""
+        for u in user['group']:
+          for group_user in data['users']:
+            if group_user['ip'] == u:
+              users += f"{group_user['id']} "
+
+    users = users.rstrip()
+    return users
+
+
+  @staticmethod
+  def add_group_to_user(id):
+    data = json.load(open('users_list.json'))
+    for user in data['users']:
+      if user['id'] == id:
+        user_index = next((index for (index, d) in enumerate(data['users']) if d["id"] == id), None)
+        print(user_index)
+        data['users'][user_index]['group'] = [user['ip']]
+        json.dump(data, open('users_list.json', 'w'))
+    return None
 
   @staticmethod
   def get_user_information(id):
