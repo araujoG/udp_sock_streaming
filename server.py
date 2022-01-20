@@ -148,6 +148,18 @@ class ServerModule():
         message = message.decode()
         print(f"RECEBIDO '{message}' DO MANAGER")
         return message.replace("USER_INFORMATION ", "")
+    
+    def get_group_info(self,user_id,client_address):
+        message = f"REQUEST_GROUP {user_id}"
+        print(f"ENVIANDO '{message}' PARA O MANAGER")
+        self.manager_socket.send(message.encode())
+        message = self.manager_socket.recv(2048)
+        message = message.decode()
+        print(f"RECEBIDO '{message}' DO MANAGER")
+        if(message != "NO_GROUP"):
+            return message.split(" ")
+        else:
+            return [client_address]
 
     def serve_clients(self):
         print(f"ESPERANDO PRIMEIRO COMANDO DE CLIENTE")
@@ -160,8 +172,20 @@ class ServerModule():
                     self.client_stop_list.append(client_address[0])
                     continue
                 else:
-                    if("REPRODUZIR_VIDEO" in data.decode()):
-                        user_id = message.split(" ")[-1]
+                    user_id = message.split(" ")[-1]
+                    if("REPRODUZIR_VIDEO_GRUPO" in data.decode()):
+                        group_user_address_list =  self.get_group_info(user_id,client_address[0])
+                        for address in group_user_address_list:
+                            splitted_data = data.decode().split(' ')
+                            nome_video = splitted_data[1]
+                            qualidade_video = splitted_data[2]
+                            message = f"REPRODUZINDO O VIDEO {nome_video} EM GRUPO, COM RESOLUCAO {qualidade_video}"
+                            self.server_socket.sendto(message.encode(),address)
+                            client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
+                            client_thread.daemon = True # thread independente
+                            client_thread.start()
+                            
+                    elif("REPRODUZIR_VIDEO" in data.decode()):
                         id, name, type, ip = self.get_user_info(user_id).split(" ")
                         if(int(type) == 0):
                             message = b"RESPOSTA - NAO TEM PERMISSAO PARA REPRODUZIR VIDEOS, POR FAVOR MUDE SUA CLASSIFICACAO"

@@ -25,21 +25,36 @@ class ClientModule:
         self.server_addr = server_addr
 
         self.manager_socket = None
-
         self.manager_port = 5000
 
         self.exit_flag = False
 
+        # Iniciando main window
         self.mainWindow = Tk()
-        self.notificationframe = None
-        self.mainWindowFrame = None
         self.mainWindow.title("Streaming")
+        self.username = StringVar()
+
+        # Frames da janela principal
+        self.mainWindowFrame = None
+        self.managerFrame = None
+        self.manage_group_button = None
+        self.create_group_button = None
+        self.notificationframe = None
+        self.notification = None
+
+        # Janela de Gerenciamento de Grupo
+        self.groupManagerWindow = None
+        self.groupManagerFrame = None
+        self.reload_manager = True
+        self.available_users = None
+        self.user_to_add = StringVar()
+        self.my_group = None
+        self.user_to_remove = StringVar()
+        self.is_grouped = None
+
+        # Janela de seleção de vídeo
         self.resolution = StringVar()
         self.video_name = StringVar()
-        self.username = StringVar()
-        self.target_id = 2
-
-        self.available_users = []
 
         self.audio_frame_list = queue.Queue(maxsize=2000)
 
@@ -112,11 +127,20 @@ class ClientModule:
         self.login(self.username.get(), 1)
         while(self.user_type == None):
             continue
-        self.create_group()
-        self.add_user_to_group()
-        self.mainWindow.title(f"Streaming {self.user_type}")
+
+        self.show_group()
+
+        while(self.my_group == None):
+            continue
+
+        print("----------------")
+        print(f"available_users: {self.available_users}")
+        print(f"my_group: {self.my_group}")
+        print("----------------")
+
         self.mainWindowFrame.destroy()
         self.mainWindowFrame = Frame(self.mainWindow)
+        self.mainWindow.title(f"Streaming {self.user_type}")
         self.mainWindowFrame.pack(side=TOP)
 
         userinfoframe = Frame(self.mainWindowFrame)
@@ -168,7 +192,7 @@ class ClientModule:
         spinbox.pack(side=RIGHT)
 
         playframe = Frame(self.mainWindowFrame)
-        playframe.pack(side=BOTTOM)
+        playframe.pack(side=TOP)
 
         play_button = Button(
             playframe, text="Reproduzir", command=self.stream_selected_video
@@ -178,23 +202,49 @@ class ClientModule:
         play_group_button = Button(
             playframe, text="Reproduzir Grupo", command=self.stream_selected_video
         )
-        play_group_button.pack(side=RIGHT, padx=10, pady=10)
-        
-        bottomframe = Frame(self.mainWindowFrame)
-        bottomframe.pack(side=BOTTOM)
-
-        remove_button = Button(
-            bottomframe, text="Remover do Grupo", command=self.remove_user_from_group
-        )
-        remove_button.pack(side=LEFT, padx=10, pady=10)
-
-        add_button = Button(
-            bottomframe, text="Adicionar do Grupo", command=self.remove_user_from_group
-        )
-        add_button.pack(side=LEFT, padx=10, pady=10)
+        play_group_button.pack(side=RIGHT, padx=10)
 
         self.notificationframe = Frame(self.mainWindowFrame)
         self.notificationframe.pack(side=BOTTOM)
+        
+        self.show_group_button()
+
+        self.mainWindow.after(self.interval, self.update_notification)
+
+    def update_notification(self):
+        if self.notification == None:
+            self.mainWindow.after(self.interval, self.update_notification)
+        else:
+            self.notificationframe.destroy()
+            self.notificationframe = Frame(self.mainWindowFrame)
+            self.notificationframe.pack(side=BOTTOM, pady=10)
+
+            n = Label(self.notificationframe, text=f"{self.notification}", bg="red")
+            n.pack(side = LEFT)
+            
+            self.show_group_button()
+
+            self.notification = None
+            self.mainWindow.after(self.interval, self.update_notification)
+    
+    
+    def show_group_button(self):
+        if self.managerFrame != None:
+            print("DESTRUINDO MANAGER FRAME")
+            self.managerFrame.destroy()
+        self.managerFrame = Frame(self.mainWindowFrame)
+        self.managerFrame.pack(side=TOP, pady=10)
+
+        if(self.is_grouped):
+            self.manage_group_button = Button(
+                self.managerFrame, text="Gerenciar Grupo", command=self.open_group_manager_window
+            )
+            self.manage_group_button.pack(side=BOTTOM, padx=10, pady=10)
+        else:
+            self.create_group_button = Button(
+                self.managerFrame, text="Criar Grupo", command=self.create_group
+            )
+            self.create_group_button.pack(side=BOTTOM, padx=10, pady=10)
 
     def open_guest_window(self):
         self.login(self.username.get(), 0)
@@ -222,6 +272,124 @@ class ClientModule:
         w = OptionMenu(inputframe, self.video_name, *OPTIONS)
         w.pack(side=RIGHT, padx="10", pady="10")
 
+    def open_group_manager_window(self):
+        self.groupManagerWindow = Toplevel(self.mainWindow)
+
+        self.groupManagerFrame = Frame(self.groupManagerWindow)
+        self.groupManagerFrame.pack(side=BOTTOM, padx="10", pady="10")
+
+        self.available_users = None 
+        self.my_group = None
+
+        self.groupManagerFrame.destroy()
+        self.groupManagerFrame = Frame(self.groupManagerWindow)
+        self.groupManagerFrame.pack(side=BOTTOM, padx="10", pady="10")
+
+        self.show_group()
+        self.show_available_users()
+
+        while(self.available_users == None or self.my_group == None):
+            continue
+
+        print("----------------")
+        print(f"available_users: {self.available_users}")
+        print(f"my_group: {self.my_group}")
+        print("----------------")
+
+        self.user_to_add.set(self.available_users[0])
+        self.user_to_remove.set(self.my_group[0])
+
+        addFrame = Frame(self.groupManagerFrame)
+        addFrame.pack(side=LEFT, padx="10", pady="10")
+
+        L1 = Label(addFrame, text="Selecione um usuário para adicionar ao grupo:")
+        L1.pack(side = TOP, pady="10")
+
+        available = OptionMenu(addFrame, self.user_to_add, *self.available_users)
+        available.pack(side=TOP, padx="10")
+
+        add_button = Button(
+            addFrame, text="Adicionar do Grupo", command=self.add_user_to_group
+        )
+        add_button.pack(side=TOP, padx="10", pady="10")
+
+        removeFrame = Frame(self.groupManagerFrame)
+        removeFrame.pack(side=LEFT, padx="10", pady="10")
+
+        L2 = Label(removeFrame, text="Selecione um usuário para remover do grupo:")
+        L2.pack(side = TOP, pady="10")
+
+        in_group = OptionMenu(removeFrame, self.user_to_remove, *self.my_group)
+        in_group.pack(side=TOP, padx="10")
+
+        remove_button = Button(
+            removeFrame, text="Remover do Grupo", command=self.remove_user_from_group
+        )
+        remove_button.pack(side=TOP, padx="10", pady="10")
+
+        self.groupManagerWindow.protocol("WM_DELETE_WINDOW", self.close_group_manager_window)
+        self.groupManagerWindow.mainloop()
+        print("ANTES DESTROY MANAGER WINDOW")
+        self.groupManagerWindow.destroy()
+
+    def load_group_manager_frame(self):
+
+        self.available_users = None 
+        self.my_group = None
+
+        self.groupManagerFrame.destroy()
+        self.groupManagerFrame = Frame(self.groupManagerWindow)
+        self.groupManagerFrame.pack(side=BOTTOM, padx="10", pady="10")
+
+        self.show_group()
+        self.show_available_users()
+
+        while(self.available_users == None or self.my_group == None):
+            continue
+
+        print("----------------")
+        print(f"available_users: {self.available_users}")
+        print(f"my_group: {self.my_group}")
+        print("----------------")
+
+        self.user_to_add.set(self.available_users[0])
+        self.user_to_remove.set(self.my_group[0])
+
+        addFrame = Frame(self.groupManagerFrame)
+        addFrame.pack(side=LEFT, padx="10", pady="10")
+
+        L1 = Label(addFrame, text="Selecione um usuário para adicionar ao grupo:")
+        L1.pack(side = TOP, pady="10")
+
+        available = OptionMenu(addFrame, self.user_to_add, *self.available_users)
+        available.pack(side=TOP, padx="10")
+
+        add_button = Button(
+            addFrame, text="Adicionar do Grupo", command=self.add_user_to_group
+        )
+        add_button.pack(side=TOP, padx="10", pady="10")
+
+        removeFrame = Frame(self.groupManagerFrame)
+        removeFrame.pack(side=LEFT, padx="10", pady="10")
+
+        L2 = Label(removeFrame, text="Selecione um usuário para remover do grupo:")
+        L2.pack(side = TOP, pady="10")
+
+        in_group = OptionMenu(removeFrame, self.user_to_remove, *self.my_group)
+        in_group.pack(side=TOP, padx="10")
+
+        remove_button = Button(
+            removeFrame, text="Remover do Grupo", command=self.remove_user_from_group
+        )
+        remove_button.pack(side=TOP, padx="10", pady="10")
+
+        self.reload_manager = False
+    
+    def close_group_manager_window(self):
+        print("REINICIANDO AVAILABLE_USERS E MY_GROUP")
+        self.available_users = None
+        self.my_group = None
+        self.groupManagerWindow.quit()
     
     def receive_frames(self):
         while not self.finished:
@@ -391,7 +559,7 @@ class ClientModule:
 
     # Solicita o stream de um video de nome video_name e resolução resolution
     def request_stream(self, video_name, resolution):
-        message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution} {self.user_id}" #ADICIONANDO USER_ID
+        message = f"{'REPRODUZIR_VIDEO'} {video_name} {resolution} {self.user_id}" # ADICIONANDO USER_ID
         message = message.encode()
         self.client_socket.sendto(message, (self.server_addr, self.server_port))
 
@@ -410,6 +578,27 @@ class ClientModule:
         else:
             pass #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
     
+    def request_stream_group(self, video_name, resolution):
+        message = f"{'REPRODUZIR_VIDEO_GRUPO'} {video_name} {resolution} {self.user_id}" # ADICIONANDO USER_ID
+        message = message.encode()
+        self.client_socket.sendto(message, (self.server_addr, self.server_port))
+
+        print(f"ENVIANDO PARA SERVIDOR DE STREAMING - {message}")
+
+        message,_ = self.client_socket.recvfrom(2048)
+        message = message.decode()
+        print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
+        if("REPRODUZINDO" in message):
+            video_thread = threading.Thread(target=self.video_frame_decode())
+            # audio_thread = threading.Thread(target=self.audio_run())
+            video_thread.daemon = True
+            # audio_thread.daemon = True
+            video_thread.start()
+            # audio_thread.start()
+        else:
+            pass #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
+
+        
     # Solicita uma resposta para o server através de uma request(mensagem)
     def request_answer(self, request):
         message = request.encode()
@@ -443,36 +632,53 @@ class ClientModule:
                     # TODO  MOSTRAR NA TELA AS INFOS DO USUÁRIO
                 elif message.startswith("CRIAR_GRUPO_ACK"):
                     print("GRUPO CRIADO ACK")
+                    self.is_grouped = True
+                    self.show_group_button()
                 elif message.startswith("GRUPO_DE_STREAMING"):
-                    # TODO MOSTRAR NA TELA
+                    print("RECEBIDO {message} DO MANAGER")
                     message = message.replace("GRUPO_DE_STREAMING ","")
-                    users = message.split(" ")
-                    print(users)
+                    self.my_group = message.split(" ")
+                    if len(self.my_group) < 2 and self.my_group[0] == "None":
+                        self.my_group = ["Nenhum Disponível"]
+                        self.is_grouped = False
+                    else:
+                        self.is_grouped = True
+                    print("ATUALIZANDO JANELA")
                 elif message.startswith("ADD_USUARIO_GRUPO_ACK"):
                     print("USUARIO ADICIONADO AO GRUPO")
-                    # TODO MOSTRAR NA TELA QUE O USUARIO FOI ADICIONADO AO GRUPO
+                    self.is_grouped = True
+                    self.close_group_manager_window()
+                    self.notification = "Usuário adicionado ao grupo"
                 elif message.startswith("REMOVER_USUARIO_GRUPO_ACK"):
-                    # TODO MOSTRAR NA TELA
                     print("USUARIO REMOVIDO DO GRUPO")
+                    self.is_grouped = True
+                    self.close_group_manager_window()
+                    self.notification = "Usuário removido do grupo"
                 elif message.startswith("LISTA_USUARIOS"):
+                    print("RECEBIDO {message} DO MANAGER")
                     message = message.replace("LISTA_USUARIOS ","")
                     users = message.split(" ")
-                    if len(users):
-                        print(users)
+                    self.available_users = []
+                    if len(users) > 1:
+                        user = ""
+                        for i in users:
+                            if user == "":
+                                user = i
+                            else:
+                                user += ": " + i
+                                self.available_users.append(user)
+                                user = ""
                     else:
-                        print("Nenhum usuario no grupo")
+                        self.available_users.append("Nenhum Disponível")
             except socket.timeout:
                 continue
         self.manager_socket.close()
         print("fechou socket manager")
 
     def login(self, name, type): ##ESTA MOCKADO
-        ip = self.manager_socket.getsockname()[0] ##ESTA MOCKADO
+        ip = self.manager_socket.getsockname()[0] ## get ip
         name = name.title().replace(" ", "")
         self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}") ##ESTA MOCKADO  
-        # self.show_group()
-        # teste = self.manager_socket.recv(2048)
-        # teste = teste.decode()
 
     def send_msg_manager(self, msg):
         print(f"ENVIANDO '{msg}' PARA O MANAGER")
@@ -484,7 +690,7 @@ class ClientModule:
         message = f'CRIAR_GRUPO {self.user_id}'
         self.send_msg_manager(message)
 
-    def request_users(self):
+    def show_available_users(self):
         message = 'LISTA_USUARIOS'
         self.send_msg_manager(message)
     
@@ -493,18 +699,29 @@ class ClientModule:
         self.send_msg_manager(message)
     
     def add_user_to_group(self):
-        message = f'ADD_USUARIO_GRUPO {self.user_id} {self.target_id}'
+        data = self.user_to_add.get().split(":")
+        if len(data) > 1 and data[0].isnumeric():
+            print(f"ID VÁLIDO: {data[0]}")
+            selected_id = data[0]
+        else:
+            selected_id = ""
+            print(f"ID INVÁLIDO: {data[0]}")
+        message = f'ADD_USUARIO_GRUPO {self.user_id} {selected_id}'
+        print(message)
         self.send_msg_manager(message)
 
     def remove_user_from_group(self):
-        message = f'REMOVER_USUARIO_GRUPO {self.user_id} {self.target_id}'
+        selected_id = self.user_to_remove.get()
+        if not selected_id.isnumeric():
+            print(f"ID INVÁLIDO: {selected_id}")
+        message = f'REMOVER_USUARIO_GRUPO {self.user_id} {selected_id}'
+        print(message)
         self.send_msg_manager(message)
 
-
 def main():
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 0:
         # endereco ipv4 do servidor de streaming por argumento
-        server_addr = sys.argv[1]
+        server_addr = "127.0.0.1"
         client = ClientModule(server_addr)
         # iniciando servico de comunicacao com o servidor
         client.open_main_window()

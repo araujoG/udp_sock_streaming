@@ -40,27 +40,54 @@ class User:
         if "group" in user:
           for u in user['group']:
             for group_user in data['users']:
-              if group_user['ip'] == u:
+              if group_user['ip'] == u and user['ip'] != u:
                 users += f"{group_user['id']} "
-
     users = users.rstrip()
     if users == "":
-      users = "Nenhum"
+      users = "None"
+    return users
+  
+  @staticmethod
+  def get_group_ip(id):
+    data = json.load(open('users_list.json'))
+    for user in data['users']:
+      if user['id'] == id:
+        users = ""
+        if "group" in user:
+          for u in user['group']:
+            for group_user in data['users']:
+              if group_user['ip'] == u:
+                users += f"{group_user['ip']} "
+    users = users.rstrip()
+    if users == "":
+      users = None
     return users
 
   @staticmethod
   def return_users(ip):
     data = json.load(open('users_list.json'))
+    users_array = []
     users = ""
     for user in data['users']:
-      if "group" not in user and user['ip'] != ip:
-        users += f"{user['id']} {user['name']}"
+      if user['ip'] != ip:
+        users_array.append(user['ip'])
+    for user in data['users']:
+      if "group" not in user:
+        continue
+      else:
+        for group_user_ip in user['group']:
+          if group_user_ip in users_array:
+            users_array.remove(group_user_ip)
+    for user in data['users']:
+      if user['ip'] in users_array:
+        users += f"{user['id']} {user['name']} "
+    users = users.rstrip()
     return users
   
   @staticmethod
   def add_user_to_group(id, id_add):
     data = json.load(open('users_list.json'))
-    user_remove_ip = ""
+    user_add_ip = ""
     for user in data['users']:
       if user['id'] == id_add:
         user_add_ip = user['ip']
@@ -68,9 +95,11 @@ class User:
       for user in data['users']:
         if user['id'] == id:
           user_index = next((index for (index, d) in enumerate(data['users']) if d["id"] == id), None)
-          print(user_index)
-          data['users'][user_index]['group'].append(user_add_ip)
-          json.dump(data, open('users_list.json', 'w'))      
+          if "group" in data['users'][user_index]:
+            if user_add_ip not in data['users'][user_index]['group']:
+              data['users'][user_index]['group'].append(user_add_ip)
+              json.dump(data, open('users_list.json', 'w'))
+              return True  
     return None
 
   @staticmethod
@@ -84,11 +113,12 @@ class User:
       for user in data['users']:
         if user['id'] == id:
           user_index = next((index for (index, d) in enumerate(data['users']) if d["id"] == id), None)
-          print(user_index)
-          data['users'][user_index]['group'].remove(user_remove_ip)
-          json.dump(data, open('users_list.json', 'w'))      
+          if user_remove_ip in data['users'][user_index]['group']:
+            data['users'][user_index]['group'].remove(user_remove_ip)
+            json.dump(data, open('users_list.json', 'w'))
+            return True  
     return None
-  
+
 
   @staticmethod
   def add_group_to_user(id):

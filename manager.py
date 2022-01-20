@@ -45,6 +45,21 @@ class ManagerModule:
             print(f"ENVIANDO '{msg}' PARA O SERVIDOR DE STREAMING")
             
             conn.send(msg.encode())
+        if(message == "REQUEST_GROUP"):
+          id = message.split(" ")[1]
+          if id.isnumeric():
+            id = int(id)
+            group = User.get_group_ip(id)
+
+            if group:
+              msg = group
+            else:
+              msg = "NO_GROUP"
+
+            print(f"ENVIANDO '{msg}' PARA O SERVIDOR DE STREAMING")
+
+            conn.send(msg.encode())
+
       except socket.timeout:
         continue    
   
@@ -99,7 +114,7 @@ class ManagerModule:
           id = int(id)
           id_add = int(id_add)
           _ = User.add_user_to_group(id,id_add)
-          msg = f'REMOVER_USUARIO_GRUPO_ACK'
+          msg = f'ADD_USUARIO_GRUPO_ACK'
           print(f"ENVIANDO {msg} PARA {addr[0]}")
           conn.send(msg.encode())
           print(f"ENVIOU {msg} PARA {addr[0]}")
