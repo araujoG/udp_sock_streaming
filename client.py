@@ -31,9 +31,15 @@ class ClientModule:
         self.exit_flag = False
 
         self.mainWindow = Tk()
+        self.notificationframe = None
+        self.mainWindowFrame = None
         self.mainWindow.title("Streaming")
         self.resolution = StringVar()
         self.video_name = StringVar()
+        self.username = StringVar()
+        self.target_id = 2
+
+        self.available_users = []
 
         self.audio_frame_list = queue.Queue(maxsize=2000)
 
@@ -49,6 +55,8 @@ class ClientModule:
 
          # ID USUARIO
         self.user_id = None
+        self.user_name = None
+        self.user_type = None
 
         self.data = b""
         self.start_client()
@@ -66,36 +74,29 @@ class ClientModule:
 
     # Carrega a janela principal da aplicação
     def open_main_window(self):
-        pass
+        self.mainWindowFrame = Frame(self.mainWindow)
+        self.mainWindowFrame.pack(side=TOP)
 
-    def open_premium_window(self):
-        self.login("admin", 0)
-        texto = Label(
-            self.mainWindow, text="Selecione um vídeo e uma resolução para reproduzir"
-        )
-        texto.pack(padx="10", pady="10")
-        # Carrega a lista de vídeos do servidor
-        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
-
-        self.video_name.set(OPTIONS[0])
-
-        bottomframe = Frame(self.mainWindow)
+        bottomframe = Frame(self.mainWindowFrame)
         bottomframe.pack(side=BOTTOM)
 
-        inputframe = Frame(self.mainWindow)
+        inputframe = Frame(self.mainWindowFrame)
         inputframe.pack(side=BOTTOM, padx=10)
 
-        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
-        w.pack(side=LEFT)
+        L1 = Label(inputframe, text="User Name")
+        L1.pack( side = TOP)
+        E1 = Entry(inputframe, bd = 1, textvariable = self.username)
+        E1.pack(side = TOP)
 
-        a_list = ["240p", "480p", "720p"]
-        spinbox = Spinbox(inputframe, values=a_list, textvariable=self.resolution)
-        spinbox.pack(side=LEFT)
-
-        submit_button = Button(
-            bottomframe, text="Reproduzir", command=self.stream_selected_video
+        premium_button = Button(
+            bottomframe, text="Entrar como Premium", command=self.open_premium_window
         )
-        submit_button.pack(side=BOTTOM, padx=10, pady=10)
+        premium_button.pack(side=LEFT, padx=10, pady=10)
+
+        guest_button = Button(
+            bottomframe, text="Entrar como Convidado", command=self.open_guest_window
+        )
+        guest_button.pack(side=LEFT, padx=10, pady=10)
 
         managerListenThread = threading.Thread(target=self.receive_from_manager)
         managerListenThread.start()
@@ -106,6 +107,121 @@ class ClientModule:
         print("depois da mainloop")
         self.mainWindow.destroy()
         self.exit_flag = True
+
+    def open_premium_window(self):
+        self.login(self.username.get(), 1)
+        while(self.user_type == None):
+            continue
+        self.create_group()
+        self.add_user_to_group()
+        self.mainWindow.title(f"Streaming {self.user_type}")
+        self.mainWindowFrame.destroy()
+        self.mainWindowFrame = Frame(self.mainWindow)
+        self.mainWindowFrame.pack(side=TOP)
+
+        userinfoframe = Frame(self.mainWindowFrame)
+        userinfoframe.pack(side=TOP, padx=10)
+
+        rightframe = Frame(userinfoframe)
+        rightframe.pack(side=RIGHT)
+
+        nome = Label(
+            rightframe, text=f"NOME: {self.user_name}", fg="blue"
+        )
+        nome.pack(side=BOTTOM)
+        
+        id = Label(
+            rightframe, text=f"ID: {self.user_id}", fg="blue"
+        )
+        id.pack(side=TOP)
+
+        titulo = Label(
+            userinfoframe, text="Selecione um vídeo e uma resolução para reproduzir"
+        )
+        titulo.pack(padx="10", pady="10")
+
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
+
+        self.video_name.set(OPTIONS[0])
+
+        inputframe = Frame(self.mainWindowFrame)
+        inputframe.pack(side=TOP, padx=10)
+
+        listframe = Frame(inputframe)
+        listframe.pack(side=BOTTOM)
+
+        resolutionframe = Frame(inputframe)
+        resolutionframe.pack(side=BOTTOM)
+
+        L1 = Label(listframe, text="Lista de Vídeos:")
+        L1.pack( side = LEFT)
+
+        w = OptionMenu(listframe, self.video_name, *OPTIONS)
+        w.pack(side=RIGHT, padx="10", pady="10")
+
+        a_list = ["240p", "480p", "720p"]
+        L2 = Label(resolutionframe, text="Resolução do Vídeo:")
+        L2.pack(side = LEFT, padx="10", pady="10")
+
+        spinbox = Spinbox(resolutionframe, values=a_list, textvariable=self.resolution)
+        spinbox.pack(side=RIGHT)
+
+        playframe = Frame(self.mainWindowFrame)
+        playframe.pack(side=BOTTOM)
+
+        play_button = Button(
+            playframe, text="Reproduzir", command=self.stream_selected_video
+        )
+        play_button.pack(side=LEFT, padx=10, pady=10)
+
+        play_group_button = Button(
+            playframe, text="Reproduzir Grupo", command=self.stream_selected_video
+        )
+        play_group_button.pack(side=RIGHT, padx=10, pady=10)
+        
+        bottomframe = Frame(self.mainWindowFrame)
+        bottomframe.pack(side=BOTTOM)
+
+        remove_button = Button(
+            bottomframe, text="Remover do Grupo", command=self.remove_user_from_group
+        )
+        remove_button.pack(side=LEFT, padx=10, pady=10)
+
+        add_button = Button(
+            bottomframe, text="Adicionar do Grupo", command=self.remove_user_from_group
+        )
+        add_button.pack(side=LEFT, padx=10, pady=10)
+
+        self.notificationframe = Frame(self.mainWindowFrame)
+        self.notificationframe.pack(side=BOTTOM)
+
+    def open_guest_window(self):
+        self.login(self.username.get(), 0)
+        self.mainWindow.title("Streaming Premium")
+        self.mainWindowFrame.destroy()
+        self.mainWindowFrame = Frame(self.mainWindow)
+        self.mainWindowFrame.pack(side=TOP)
+
+        texto = Label(
+            self.mainWindowFrame, text="Aguarde até que o streaming comece ..."
+        )
+        texto.pack(padx="10", pady="10")
+
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
+
+        self.video_name.set(OPTIONS[0])
+
+        inputframe = Frame(self.mainWindowFrame)
+        inputframe.pack(side=BOTTOM, padx=10)
+
+        L1 = Label(inputframe, text="Lista de Vídeos:")
+        L1.pack( side = LEFT)
+
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=RIGHT, padx="10", pady="10")
+
     
     def receive_frames(self):
         while not self.finished:
@@ -318,16 +434,33 @@ class ClientModule:
                     print("ENTRANDO ACK")
                     # TODO IR PARA A TELA LOGADA
                 elif message.startswith("STATUS_DO_USUARIO"):
-                    msg, ip, type, members = message.split(" ")
+                    msg, self.user_id, self.user_name, self.user_type = message.split(" ")
+                    if int(self.user_type):
+                        self.user_type = "Premium"
+                    else:
+                        self.user_type = "Convidado"
                     print("MOSTRANDO STATUS DO USUARIO")
                     # TODO  MOSTRAR NA TELA AS INFOS DO USUÁRIO
                 elif message.startswith("CRIAR_GRUPO_ACK"):
                     print("GRUPO CRIADO ACK")
                 elif message.startswith("GRUPO_DE_STREAMING"):
+                    # TODO MOSTRAR NA TELA
                     message = message.replace("GRUPO_DE_STREAMING ","")
                     users = message.split(" ")
                     print(users)
-
+                elif message.startswith("ADD_USUARIO_GRUPO_ACK"):
+                    print("USUARIO ADICIONADO AO GRUPO")
+                    # TODO MOSTRAR NA TELA QUE O USUARIO FOI ADICIONADO AO GRUPO
+                elif message.startswith("REMOVER_USUARIO_GRUPO_ACK"):
+                    # TODO MOSTRAR NA TELA
+                    print("USUARIO REMOVIDO DO GRUPO")
+                elif message.startswith("LISTA_USUARIOS"):
+                    message = message.replace("LISTA_USUARIOS ","")
+                    users = message.split(" ")
+                    if len(users):
+                        print(users)
+                    else:
+                        print("Nenhum usuario no grupo")
             except socket.timeout:
                 continue
         self.manager_socket.close()
@@ -335,11 +468,11 @@ class ClientModule:
 
     def login(self, name, type): ##ESTA MOCKADO
         ip = self.manager_socket.getsockname()[0] ##ESTA MOCKADO
+        name = name.title().replace(" ", "")
         self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}") ##ESTA MOCKADO  
-        self.user_id, name, type, ip = User.get_user_by_ip(ip).split(" ") ##ESTA MOCKADO
-        self.show_group()
-        teste = self.manager_socket.recv(2048)
-        teste = teste.decode()
+        # self.show_group()
+        # teste = self.manager_socket.recv(2048)
+        # teste = teste.decode()
 
     def send_msg_manager(self, msg):
         print(f"ENVIANDO '{msg}' PARA O MANAGER")
@@ -351,11 +484,21 @@ class ClientModule:
         message = f'CRIAR_GRUPO {self.user_id}'
         self.send_msg_manager(message)
 
+    def request_users(self):
+        message = 'LISTA_USUARIOS'
+        self.send_msg_manager(message)
+    
     def show_group(self):
         message = f'VER_GRUPO {self.user_id}'
         self.send_msg_manager(message)
+    
+    def add_user_to_group(self):
+        message = f'ADD_USUARIO_GRUPO {self.user_id} {self.target_id}'
+        self.send_msg_manager(message)
 
-
+    def remove_user_from_group(self):
+        message = f'REMOVER_USUARIO_GRUPO {self.user_id} {self.target_id}'
+        self.send_msg_manager(message)
 
 
 def main():
@@ -364,7 +507,7 @@ def main():
         server_addr = sys.argv[1]
         client = ClientModule(server_addr)
         # iniciando servico de comunicacao com o servidor
-        client.open_premium_window()
+        client.open_main_window()
 
 if __name__ == "__main__":
     main()

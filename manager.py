@@ -55,29 +55,30 @@ class ManagerModule:
       try:
         message = conn.recv(2048)
         message = message.decode()
-        print(f"RECEBIDO '{message}' DE {addr[0]}")
+        print(f".RECEBIDO '{message}' DE {addr[0]}")
         if message.startswith("ENTRAR_NA_APP"):
           print(f"RECEBIDO 'ENTRAR_NA_APP' DE {addr[0]}")
-          _m, nome, tipo, ip = message.split(" ")
+          _msg, nome, tipo, ip = message.split(" ")
           user = User.get_user_by_ip(ip)
           if user == None:
             print(f"ENVIANDO 'ENTRAR_NA_APP_ACK' PARA {addr[0]}")
             user = User(nome, tipo, ip)
             user.save()
             conn.send(b"ENTRAR_NA_APP_ACK")
-          else:
-            id, name, type, ip = user.split(" ")
-            msg = f"STATUS_DO_USUARIO {id} {type} group"
-            print(f"ENVIANDO '{msg}' PARA {addr[0]}")
-            conn.send(msg.encode())
-            print(f"ENVIOU '{msg}' PARA {addr[0]}")
-          print("entra na app")
+            user = User.get_user_by_ip(ip)
+          id, nome, tipo, _ip = user.split(" ")
+          msg = f"STATUS_DO_USUARIO {id} {nome} {tipo}"
+          print(f"ENVIANDO '{msg}' PARA {addr[0]}")
+          conn.send(msg.encode())
+          print(f"ENVIOU '{msg}' PARA {addr[0]}")
+          print("entrou na app")
         elif message == "SAIR_DA_APP":
           print(f"RECEBIDO 'SAIR_DA_APP' DE {addr[0]}")
-          User.remove_by_ip(addr)
+          User.remove_by_ip(addr[0])
           print(f"ENVIANDO 'SAIR_DA_APP_ACK' PARA {addr[0]}")
           conn.send(b"SAIR_DA_APP_ACK")
           self.remove(conn)
+          break
         elif message.startswith("CRIAR_GRUPO"):
           _,id = message.split(" ")
           id = int(id)
@@ -90,6 +91,30 @@ class ManagerModule:
           id = int(id)
           users = User.show_group(id)
           msg = f'GRUPO_DE_STREAMING {users}'
+          print(f"ENVIANDO {msg} PARA {addr[0]}")
+          conn.send(msg.encode())
+          print(f"ENVIOU {msg} PARA {addr[0]}")
+        elif message.startswith("ADD_USUARIO_GRUPO"):
+          _,id,id_add = message.split(" ")
+          id = int(id)
+          id_add = int(id_add)
+          _ = User.add_user_to_group(id,id_add)
+          msg = f'REMOVER_USUARIO_GRUPO_ACK'
+          print(f"ENVIANDO {msg} PARA {addr[0]}")
+          conn.send(msg.encode())
+          print(f"ENVIOU {msg} PARA {addr[0]}")
+        elif message.startswith("REMOVER_USUARIO_GRUPO"):
+          _,id,id_remove = message.split(" ")
+          id = int(id)
+          id_remove = int(id_remove)
+          _ = User.remove_user_from_group(id,id_remove)
+          msg = f'REMOVER_USUARIO_GRUPO_ACK'
+          print(f"ENVIANDO {msg} PARA {addr[0]}")
+          conn.send(msg.encode())
+          print(f"ENVIOU {msg} PARA {addr[0]}")
+        elif message == "LISTA_USUARIOS":
+          users = User.return_users(addr[0])
+          msg = f'LISTA_USUARIOS {users}'
           print(f"ENVIANDO {msg} PARA {addr[0]}")
           conn.send(msg.encode())
           print(f"ENVIOU {msg} PARA {addr[0]}")
@@ -130,7 +155,7 @@ class ManagerModule:
         self.streaming_connection_up = 1
         streamingThread = threading.Thread(target=self.streaming_thread, args=(conn, addr))
         streamingThread.start()
-      
+
       else:
         self.list_of_clients.append(conn)
 
