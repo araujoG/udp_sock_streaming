@@ -1,3 +1,4 @@
+import pickle
 import queue
 import sys
 import socket
@@ -41,9 +42,19 @@ class ClientModule:
 
         self.data = b""
 
+        #para o audio
+        self.p = pyaudio.PyAudio()
+        self.CHUNK = 1024
+        self.FORMAT = pyaudio.paInt16
+        self.stream = self.p.open(format=self.FORMAT,  # p.get_format_from_width(2),
+                        channels=2,
+                        rate=44100,
+                        output=True,
+                        frames_per_buffer=self.CHUNK)
+
     # Inicializa o socket do client
     def start_client(self):
-        port = 5000
+        port = 5050
         addr = ("", port)
 
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -71,43 +82,23 @@ class ClientModule:
         self.request_stream(self.video_name.get(), self.resolution.get())
 
     def audio_run(self):
-        stream, p = self.audio_frame_decode()
         while (not self.finish_audio):
             frame = self.audio_frame_list.get()
-            stream.write(frame)
+            self.stream.write(frame)
             print(".")
         print("pos loop audio")
-        stream.stop_stream()
+        self.stream.stop_stream()
         print("pos stop stream")
-        stream.close()
+        self.stream.close()
         print("pos close stream")
-        p.terminate()
+        self.p.terminate()
         self.audio_frame_list.queue.clear()
         print("fim audio")
-
-    def audio_frame_decode(self):
-        # self.client_socket.sendto(b'Ack', (self.server_addr, self.server_port))
-        # criamos um objeto pyaudio para manipular o arquivo
-        p = pyaudio.PyAudio()
-        # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
-        # a partir do próprio arquivo wave aberto anteriormente
-        CHUNK = 1024
-        FORMAT = pyaudio.paInt16
-        stream = p.open(format=FORMAT,  # p.get_format_from_width(2),
-                        channels=2,
-                        rate=44100,
-                        output=True,
-                        frames_per_buffer=CHUNK)
-        # lemos <chunck> bytes por vez do stream e o enviamos <write> para o dispositivo
-        # padrão de saída de audio. Quando termina de ler sai fora do loop
-        # audio_data = []
-        # self.client_socket.settimeout(1)
-        return stream, p
 
     # Recebe os bytes do video através do servidor, decodifica e reproduz o vídeo
     def video_frame_decode(self):
         self.data = b""
-        #time.sleep(2)
+        time.sleep(2)
         while True:
             try:
                 # verificao para ver se buffering esta acabando
@@ -221,7 +212,7 @@ class ClientModule:
                         self.buffered = True
                     self.data = b""
             else:
-                frame_segment = frame_segment[1:]
+                frame_segment = pickle.loads(frame_segment[1:])
                 self.audio_frame_list.put(frame_segment)
 
         self.close_stream()

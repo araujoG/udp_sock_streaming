@@ -15,10 +15,11 @@ import moviepy.editor as mp
 from numpy import array
 from moviepy.editor import *
 
+
 class ServerModule():
     MAX_DGRAM_SIZE = 2 ** 16  # tamanho maximo do pacote udp
     MAX_FRAME_DGRAM_SIZE = MAX_DGRAM_SIZE - 64  # evitar overflow no pacote
-    MAX_AUDIO_DGRAM_SIZE = math.ceil(MAX_DGRAM_SIZE - (2 ** 16)/2)
+    MAX_AUDIO_DGRAM_SIZE = math.ceil(MAX_DGRAM_SIZE - (2 ** 16) / 2)
 
     def __init__(self):
         self.port = 6000
@@ -55,7 +56,7 @@ class ServerModule():
         texto.pack(padx="10", pady="10")
         # Carrega a lista de vídeos do servidor
         OPTIONS = self.list_videos_in_folder()
-        if OPTIONS == [] :
+        if OPTIONS == []:
             OPTIONS = [""]
 
         self.video_name.set(OPTIONS[0])
@@ -84,7 +85,7 @@ class ServerModule():
         texto.pack(padx="10", pady="10")
         # Carrega a lista de vídeos do servidor
         OPTIONS = self.available_videos
-        if OPTIONS == [] :
+        if OPTIONS == []:
             OPTIONS = [""]
 
         self.video_name.set(OPTIONS[0])
@@ -125,7 +126,6 @@ class ServerModule():
 
         self.mainWindow.mainloop()
 
-
     def close_server(self):
         print("Fechando servidor...")
         self.keep_running = False
@@ -142,15 +142,15 @@ class ServerModule():
                     continue
                 else:
                     client_thread = threading.Thread(target=self.single_client_serving, args=(
-                    data, client_address))  # iniciando thread para servir um cliente
+                        data, client_address))  # iniciando thread para servir um cliente
                     client_thread.daemon = True  # thread independente
                     client_thread.start()
             except socket.timeout:
                 continue
             except KeyboardInterrupt:
                 continue
-                
-    def single_client_serving(self,data,client_address): #iniciando servico de um cliente qualquer
+
+    def single_client_serving(self, data, client_address):  # iniciando servico de um cliente qualquer
         data = data.decode('utf-8')
 
         if ("LISTAR_VIDEOS" == data):  # listando videos para o cliente
@@ -166,9 +166,11 @@ class ServerModule():
             server_socket_video = self.start_server()
             server_socket_audio = self.start_server()
             splitted_data = data.split(' ')
-            self.conversor_audio(splitted_data[1]+"_"+splitted_data[2]+".mp4")
-            video_thread = threading.Thread(target=self.play_video,args=(data, client_address, server_socket_video, splitted_data))
-            audio_thread = threading.Thread(target=self.play_audio, args=(data,client_address,server_socket_audio,splitted_data))
+            self.conversor_audio(splitted_data[1] + "_" + splitted_data[2] + ".mp4")
+            video_thread = threading.Thread(target=self.play_video,
+                                            args=(data, client_address, server_socket_video, splitted_data))
+            audio_thread = threading.Thread(target=self.play_audio,
+                                            args=(data, client_address, server_socket_audio, splitted_data))
 
             video_thread.daemon = True
             audio_thread.daemon = True
@@ -181,7 +183,7 @@ class ServerModule():
         message = "\n".join(self.available_videos)
         message = message.encode()
         return message
-    
+
     def include_video(self):  # para incluir um video no catalogo
         if self.video_name.get() == "":
             return
@@ -199,10 +201,10 @@ class ServerModule():
     def get_available_videos(self):
         data = json.load(open('catalogo.json'))
         return data['videos']
-    
+
     def write_available_videos(self):
         with open("catalogo.json", 'w') as f:
-            json.dump({"videos":self.available_videos}, f)
+            json.dump({"videos": self.available_videos}, f)
 
     def list_videos_in_folder(self):  # listando videos
         filenames = os.listdir('./videos/')
@@ -212,7 +214,7 @@ class ServerModule():
         output -= set(self.available_videos)
         return list(output)
 
-    def play_video(self, data, client_address, server_socket,splitted_data):
+    def play_video(self, data, client_address, server_socket, splitted_data):
         video_name = splitted_data[1]
         resolution = splitted_data[2]
         video_string = './videos/' + video_name + '_' + resolution + '.mp4'  # path do video
@@ -222,7 +224,8 @@ class ServerModule():
         while (video.isOpened()):
             cv2.waitKey(30)  # esperando para controlar o fps
             ret, frame = video.read()  # retorno se tem algum frame / resgatando frame atual
-            if (not ret):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
+            if (
+            not ret):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
                 video.release()
                 server_socket.close()  # liberando video
                 return
@@ -238,15 +241,17 @@ class ServerModule():
         data = buff_frame_data.tostring()  # array de bytes do frame
         size = len(data)  # tamanho do frame atual
 
-        number_of_segments = math.ceil(size / self.MAX_FRAME_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
+        number_of_segments = math.ceil(
+            size / self.MAX_FRAME_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
 
         start_pos = 0
         ending_pos = 0
 
         while (number_of_segments):
             ending_pos = min(size, start_pos + self.MAX_FRAME_DGRAM_SIZE)  # atualizando posicao final para envio
-            server_socket.sendto(struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
-                                 client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
+            server_socket.sendto(
+                struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
+                client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
             print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
@@ -263,7 +268,7 @@ class ServerModule():
             return
         my_clip.audio.write_audiofile(r"./audios/" + video_name)  # transforma o audio em um arquivo wav
 
-    def play_audio(self, data, client_address, server_socket,splitted_data):  # roda o audio
+    def play_audio(self, data, client_address, server_socket, splitted_data):  # roda o audio
         # chunck mostra quantos pontos iremos ler por vez no arquivo wave
         audio_name = splitted_data[1]
         resolution = splitted_data[2]
@@ -272,11 +277,9 @@ class ServerModule():
         # abrimos um arquivo
         wavfile = wave.open(audio_string, 'rb')
 
-
         # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
         # a partir do próprio arquivo wave aberto anteriormente
         CHUNK = 1024
-
 
         print(f"RECEBIDA CHAMADA AUDIO PARA {client_address[0]} {server_socket}")
 
@@ -286,14 +289,16 @@ class ServerModule():
         cnt = 0
         frame = 1
         while True:
-            if(client_address[0] in self.client_stop_list):
+            if (client_address[0] in self.client_stop_list):
                 self.client_stop_list.remove(client_address[0])
                 break
             frame = wavfile.readframes(CHUNK)
-            print("ENVIANDO AUDIO PARA "+ client_address[0])
+            frame = pickle.dumps(frame)
+            print("ENVIANDO AUDIO PARA " + client_address[0])
             server_socket.sendto(struct.pack("?", False) + frame, client_address)
 
-            #time.sleep(0.1 * CHUNK / sample_rate)
+            time.sleep(0.1 * CHUNK / sample_rate)
+            #time.sleep(0.8 * CHUNK / 44100)
 
             if cnt > (wavfile.getnframes() / CHUNK):
                 break
@@ -306,7 +311,8 @@ class ServerModule():
 
         # fecha o arquivo wave
         wavfile.close()
-        
+
+
 def main():
     server = ServerModule()
     server.open_main_window()
