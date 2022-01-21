@@ -41,6 +41,8 @@ class ClientModule:
         self.create_group_button = None
         self.notificationframe = None
         self.notification = None
+        self.notification_interval = 2000
+        self.notification_color = ""
 
         # Janela de Gerenciamento de Grupo
         self.groupManagerWindow = None
@@ -92,16 +94,16 @@ class ClientModule:
         self.mainWindowFrame = Frame(self.mainWindow)
         self.mainWindowFrame.pack(side=TOP)
 
-        bottomframe = Frame(self.mainWindowFrame)
-        bottomframe.pack(side=BOTTOM)
-
         inputframe = Frame(self.mainWindowFrame)
-        inputframe.pack(side=BOTTOM, padx=10)
+        inputframe.pack(side=TOP, padx=10)
 
         L1 = Label(inputframe, text="User Name")
         L1.pack( side = TOP)
         E1 = Entry(inputframe, bd = 1, textvariable = self.username)
         E1.pack(side = TOP)
+
+        bottomframe = Frame(self.mainWindowFrame)
+        bottomframe.pack(side=TOP)
 
         premium_button = Button(
             bottomframe, text="Entrar como Premium", command=self.open_premium_window
@@ -113,9 +115,12 @@ class ClientModule:
         )
         guest_button.pack(side=LEFT, padx=10, pady=10)
 
+        self.notificationframe = Frame(self.mainWindowFrame)
+
         managerListenThread = threading.Thread(target=self.receive_from_manager)
         managerListenThread.start()
 
+        self.mainWindow.after(self.interval, self.update_notification)
         self.mainWindow.protocol("WM_DELETE_WINDOW", lambda arg="SAIR_DA_APP": self.send_msg_manager(arg))
         self.mainWindow.mainloop()
 
@@ -124,6 +129,10 @@ class ClientModule:
         self.exit_flag = True
 
     def open_premium_window(self):
+        if self.username.get().replace(" ", "") == "":
+            self.notification_color = "red"
+            self.notification = "Nome de usuário inválido"
+            return
         self.login(self.username.get(), 1)
         while(self.user_type == None):
             continue
@@ -144,10 +153,10 @@ class ClientModule:
         self.mainWindowFrame.pack(side=TOP)
 
         userinfoframe = Frame(self.mainWindowFrame)
-        userinfoframe.pack(side=TOP, padx=10)
+        userinfoframe.pack(side=TOP, padx="5")
 
         rightframe = Frame(userinfoframe)
-        rightframe.pack(side=RIGHT)
+        rightframe.pack(side=RIGHT, padx=("15","5"))
 
         nome = Label(
             rightframe, text=f"NOME: {self.user_name}", fg="blue"
@@ -162,7 +171,7 @@ class ClientModule:
         titulo = Label(
             userinfoframe, text="Selecione um vídeo e uma resolução para reproduzir"
         )
-        titulo.pack(padx="10", pady="10")
+        titulo.pack(pady="10")
 
         # Carrega a lista de vídeos do servidor
         OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
@@ -175,41 +184,39 @@ class ClientModule:
         listframe = Frame(inputframe)
         listframe.pack(side=BOTTOM)
 
-        resolutionframe = Frame(inputframe)
-        resolutionframe.pack(side=BOTTOM)
-
         L1 = Label(listframe, text="Lista de Vídeos:")
-        L1.pack( side = LEFT)
+        L1.pack(side = LEFT)
 
         w = OptionMenu(listframe, self.video_name, *OPTIONS)
-        w.pack(side=RIGHT, padx="10", pady="10")
+        w.pack(side=RIGHT, padx="10")
+
+        resolutionframe = Frame(inputframe)
+        resolutionframe.pack(side=BOTTOM, pady="10")
 
         a_list = ["240p", "480p", "720p"]
         L2 = Label(resolutionframe, text="Resolução do Vídeo:")
-        L2.pack(side = LEFT, padx="10", pady="10")
+        L2.pack(side = LEFT, padx="10")
 
         spinbox = Spinbox(resolutionframe, values=a_list, textvariable=self.resolution)
         spinbox.pack(side=RIGHT)
 
         playframe = Frame(self.mainWindowFrame)
-        playframe.pack(side=TOP)
+        playframe.pack(side=TOP, pady=("10", "0"))
 
         play_button = Button(
-            playframe, text="Reproduzir", command=self.stream_selected_video
+            playframe, text="Reproduzir Vídeo", command=self.stream_selected_video
         )
-        play_button.pack(side=LEFT, padx=10, pady=10)
+        play_button.pack(side=LEFT, padx="10")
 
         play_group_button = Button(
-            playframe, text="Reproduzir Grupo", command=self.stream_selected_video
+            playframe, text="Reproduzir p/ Grupo", command=self.stream_selected_video
         )
-        play_group_button.pack(side=RIGHT, padx=10)
+        play_group_button.pack(side=RIGHT, padx="10")
 
         self.notificationframe = Frame(self.mainWindowFrame)
         self.notificationframe.pack(side=BOTTOM)
         
         self.show_group_button()
-
-        self.mainWindow.after(self.interval, self.update_notification)
 
     def update_notification(self):
         if self.notification == None:
@@ -217,36 +224,46 @@ class ClientModule:
         else:
             self.notificationframe.destroy()
             self.notificationframe = Frame(self.mainWindowFrame)
-            self.notificationframe.pack(side=BOTTOM, pady=10)
+            self.notificationframe.pack(side=BOTTOM)
 
-            n = Label(self.notificationframe, text=f"{self.notification}", bg="red")
-            n.pack(side = LEFT)
+            n = Label(self.notificationframe, text=f"{self.notification}", fg=self.notification_color)
+            n.pack(side = LEFT, pady="5")
             
-            self.show_group_button()
+            if self.username.get().replace(" ", "") != "": 
+                self.show_group_button()
 
             self.notification = None
             self.mainWindow.after(self.interval, self.update_notification)
-    
-    
+            self.mainWindow.after(self.notification_interval, self.remove_notification)
+
+    def remove_notification(self):
+        self.notificationframe.destroy()
+        self.notificationframe = Frame(self.mainWindowFrame)
+        self.notificationframe.pack(side=BOTTOM)
+
     def show_group_button(self):
         if self.managerFrame != None:
             print("DESTRUINDO MANAGER FRAME")
             self.managerFrame.destroy()
         self.managerFrame = Frame(self.mainWindowFrame)
-        self.managerFrame.pack(side=TOP, pady=10)
+        self.managerFrame.pack(side=TOP, pady=("15", "0"))
 
         if(self.is_grouped):
             self.manage_group_button = Button(
                 self.managerFrame, text="Gerenciar Grupo", command=self.open_group_manager_window
             )
-            self.manage_group_button.pack(side=BOTTOM, padx=10, pady=10)
+            self.manage_group_button.pack(side=BOTTOM, pady="5")
         else:
             self.create_group_button = Button(
                 self.managerFrame, text="Criar Grupo", command=self.create_group
             )
-            self.create_group_button.pack(side=BOTTOM, padx=10, pady=10)
+            self.create_group_button.pack(side=BOTTOM, pady="5")
 
     def open_guest_window(self):
+        if self.username.get().replace(" ", "") == "":
+            self.notification_color = "red"
+            self.notification = "Nome de usuário inválido"
+            return
         self.login(self.username.get(), 0)
         self.mainWindow.title("Streaming Premium")
         self.mainWindowFrame.destroy()
@@ -578,6 +595,15 @@ class ClientModule:
         else:
             pass #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
     
+    def wait_stream(self):
+        message,_ = self.client_socket.recvfrom(2048)
+        message = message.decode()
+        if message.startswith("RESPOSTA - REPRODUZINDO O VIDEO"):
+            print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
+        else:
+            print("MSG INESPERADA, ERRO AO REPRODUZIR VIDEO")
+        pass
+    
     def request_stream_group(self, video_name, resolution):
         message = f"{'REPRODUZIR_VIDEO_GRUPO'} {video_name} {resolution} {self.user_id}" # ADICIONANDO USER_ID
         message = message.encode()
@@ -598,7 +624,6 @@ class ClientModule:
         else:
             pass #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
 
-        
     # Solicita uma resposta para o server através de uma request(mensagem)
     def request_answer(self, request):
         message = request.encode()
@@ -629,7 +654,6 @@ class ClientModule:
                     else:
                         self.user_type = "Convidado"
                     print("MOSTRANDO STATUS DO USUARIO")
-                    # TODO  MOSTRAR NA TELA AS INFOS DO USUÁRIO
                 elif message.startswith("CRIAR_GRUPO_ACK"):
                     print("GRUPO CRIADO ACK")
                     self.is_grouped = True
@@ -647,11 +671,13 @@ class ClientModule:
                 elif message.startswith("ADD_USUARIO_GRUPO_ACK"):
                     print("USUARIO ADICIONADO AO GRUPO")
                     self.is_grouped = True
+                    self.notification_color = "green"
                     self.close_group_manager_window()
                     self.notification = "Usuário adicionado ao grupo"
                 elif message.startswith("REMOVER_USUARIO_GRUPO_ACK"):
                     print("USUARIO REMOVIDO DO GRUPO")
                     self.is_grouped = True
+                    self.notification_color = "red"
                     self.close_group_manager_window()
                     self.notification = "Usuário removido do grupo"
                 elif message.startswith("LISTA_USUARIOS"):
@@ -706,6 +732,7 @@ class ClientModule:
         else:
             selected_id = ""
             print(f"ID INVÁLIDO: {data[0]}")
+            return
         message = f'ADD_USUARIO_GRUPO {self.user_id} {selected_id}'
         print(message)
         self.send_msg_manager(message)
@@ -714,6 +741,7 @@ class ClientModule:
         selected_id = self.user_to_remove.get()
         if not selected_id.isnumeric():
             print(f"ID INVÁLIDO: {selected_id}")
+            return
         message = f'REMOVER_USUARIO_GRUPO {self.user_id} {selected_id}'
         print(message)
         self.send_msg_manager(message)
