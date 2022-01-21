@@ -226,17 +226,17 @@ class ServerModule():
         if ("REPRODUZIR_VIDEO" in data):  # streaming de um video para o cliente
             print(f"RECEBIDO DE {client_address}- REPRODUZIR_VIDEO\n")
             server_socket_video = self.start_server()
-            server_socket_audio = self.start_server()
+            # server_socket_audio = self.start_server()
             splitted_data = data.split(' ')
-            self.conversor_audio(splitted_data[1]+"_"+splitted_data[2]+".mp4")
+            # self.conversor_audio(splitted_data[1]+"_"+splitted_data[2]+".mp4")
             video_thread = threading.Thread(target=self.play_video,args=(data, client_address, server_socket_video, splitted_data))
-            audio_thread = threading.Thread(target=self.play_audio, args=(data,client_address,server_socket_audio,splitted_data))
+            # audio_thread = threading.Thread(target=self.play_audio, args=(data,client_address,server_socket_audio,splitted_data))
 
             video_thread.daemon = True
-            audio_thread.daemon = True
+            # audio_thread.daemon = True
 
             video_thread.start()
-            audio_thread.start()
+            # audio_thread.start()
         return
 
     def list_videos(self):  # resgatando lista de videos disponiveis
@@ -289,9 +289,11 @@ class ServerModule():
                 server_socket.close()  # liberando video
                 return
             if (client_address[0] in self.client_stop_list):
+                print(f"{client_address[0]} pediu para parar o streaming")
                 self.client_stop_list.remove(client_address[0])  # removendo cliente da lista de paradas
                 video.release()
                 server_socket.close()
+                print(f"{client_address[0]} teve o streaming encerrado")
                 return
             self.framing_video(frame, client_address, server_socket)
 

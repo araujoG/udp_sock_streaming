@@ -446,8 +446,8 @@ class ClientModule:
         windowThread = threading.Thread(target=self.update_image)
         windowThread.start()
 
-        audio_thread = threading.Thread(target=self.audio_run)
-        audio_thread.start()
+        # audio_thread = threading.Thread(target=self.audio_run)
+        # audio_thread.start()
 
         # Callback para quando a janela foi encerrada pelo botão superior
         self.playerWindow.protocol("WM_DELETE_WINDOW", self.finish_streaming)
@@ -455,7 +455,7 @@ class ClientModule:
 
         # Aguarda até as tres threads terminarem
         windowThread.join()
-        audio_thread.join()
+        # audio_thread.join()
         bufferThread.join()
 
         print("reiniciando variaveis")
@@ -556,12 +556,13 @@ class ClientModule:
         print("mandando mensagem de parada")
         self.client_socket.sendto(message, (self.server_addr, self.server_port))
         print("mensagem de parada enviada")
+        self.client_socket.settimeout(0.5)
         time.sleep(1)
         # resgatando possivel pacote que "sobrou" do envio do video do servidor
         try:
             _, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
         except socket.timeout:
-            pass
+            self.client_socket.settimeout(None)
         print("streamming parado")
         return
     
