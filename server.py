@@ -165,8 +165,7 @@ class ServerModule():
         print(f"ESPERANDO PRIMEIRO COMANDO DE CLIENTE")
         while (self.keep_running):
             try:
-                data, client_address = self.server_socket.recvfrom(1024)  # recebendo pacote com comando do cliente
-                print(f"Cliente {client_address} conectado")
+                data, client_address = self.server_socket.recvfrom(2048)  # recebendo pacote com comando do cliente
                 message = data.decode('utf-8')
                 print(f"COMANDO DE CLIENTE RECEBIDO {client_address[0]} - {data.decode('utf-8')}")
                 if ("PARAR_STREAMING" in data.decode('utf-8')):  # request de parada de streaming
@@ -182,15 +181,11 @@ class ServerModule():
                             nome_video = splitted_data[1]
                             qualidade_video = splitted_data[2]
                             message = f"REPRODUZINDO O VIDEO {nome_video} EM GRUPO, COM RESOLUCAO {qualidade_video}"
-                            self.server_socket.sendto(message.encode(),address)
+                            self.server_socket.sendto(message.encode(), address)
                             client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
                             client_thread.daemon = True # thread independente
                             client_thread.start()
-                            address = (address, 5020)
-                            self.server_socket.sendto(message.encode(),address)
-                            client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
-                            client_thread.daemon = True # thread independente
-                            client_thread.start()
+
                             
                     elif("REPRODUZIR_VIDEO" in data.decode()):
                         id, name, type, ip = self.get_user_info(user_id).split(" ")
@@ -202,7 +197,7 @@ class ServerModule():
                             nome_video = splitted_data[1]
                             qualidade_video = splitted_data[2]
                             message = f"RESPOSTA - REPRODUZINDO O VIDEO {nome_video}, COM RESOLUCAO {qualidade_video}"
-                            self.server_socket.sendto(message.encode(),client_address)
+                            self.server_socket.sendto(message.encode(), client_address)
                             client_thread = threading.Thread(target=self.single_client_serving, args=(
                             data, client_address))  # iniciando thread para servir um cliente
                             client_thread.daemon = True  # thread independente
@@ -222,14 +217,14 @@ class ServerModule():
 
         if ("LISTAR_VIDEOS" == data):  # listando videos para o cliente
             server_socket = self.start_server()
-            print(f"RECEBIDO DE {client_address[0]}- LISTAR_VIDEOS\n")
+            print(f"RECEBIDO DE {client_address}- LISTAR_VIDEOS\n")
             message = self.list_videos()
-            print(f"ENVIANDO PARA {client_address[0]}")
+            print(f"ENVIANDO PARA {client_address}")
             print(message)
             server_socket.sendto(message, client_address)
 
         if ("REPRODUZIR_VIDEO" in data):  # streaming de um video para o cliente
-            print(f"RECEBIDO DE {client_address[0]}- REPRODUZIR_VIDEO\n")
+            print(f"RECEBIDO DE {client_address}- REPRODUZIR_VIDEO\n")
             server_socket_video = self.start_server()
             server_socket_audio = self.start_server()
             splitted_data = data.split(' ')
@@ -314,7 +309,7 @@ class ServerModule():
             ending_pos = min(size, start_pos + self.MAX_FRAME_DGRAM_SIZE)  # atualizando posicao final para envio
             server_socket.sendto(struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
                                  client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
-            print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
+            # TODO print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
@@ -345,9 +340,9 @@ class ServerModule():
         CHUNK = 1024
 
 
-        print(f"RECEBIDA CHAMADA AUDIO PARA {client_address[0]} {server_socket}")
+        print(f"RECEBIDA CHAMADA AUDIO PARA {client_address} {server_socket}")
 
-        print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
+        # TODO print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
         data = None
         sample_rate = wavfile.getframerate()
         cnt = 0
@@ -357,7 +352,7 @@ class ServerModule():
                 self.client_stop_list.remove(client_address[0])
                 break
             frame = wavfile.readframes(CHUNK)
-            print("ENVIANDO AUDIO PARA "+ client_address[0])
+            # TODO print("ENVIANDO AUDIO PARA "+ client_address[0])
             server_socket.sendto(struct.pack("?", False) + frame, client_address)
 
             #time.sleep(0.1 * CHUNK / sample_rate)

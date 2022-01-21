@@ -80,7 +80,7 @@ class ClientModule:
 
     # Inicializa o socket do client
     def start_client(self):
-        port = 5020 # 5050
+        port = 5030 # 5050
         addr = ("", port)
 
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -602,7 +602,7 @@ class ClientModule:
         while not stop:
             message,_ = self.client_socket.recvfrom(2048)
             message = message.decode()
-            if message.startswith("RESPOSTA - REPRODUZINDO O VIDEO"):
+            if message.startswith("REPRODUZINDO O VIDEO "):
                 print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
                 video_thread = threading.Thread(target=self.video_frame_decode())
                 video_thread.daemon = True
