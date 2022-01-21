@@ -80,7 +80,7 @@ class ClientModule:
 
     # Inicializa o socket do client
     def start_client(self):
-        port = 5030 # 5050
+        port = 5020 # 5050
         addr = ("", port)
 
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -209,7 +209,7 @@ class ClientModule:
         play_button.pack(side=LEFT, padx="10")
 
         play_group_button = Button(
-            playframe, text="Reproduzir p/ Grupo", command=self.stream_selected_video
+            playframe, text="Reproduzir p/ Grupo", command=self.request_stream_group
         )
         play_group_button.pack(side=RIGHT, padx="10")
 
@@ -407,7 +407,7 @@ class ClientModule:
         w = OptionMenu(inputframe, self.video_name, *OPTIONS)
         w.pack(side=RIGHT, padx="10", pady="10")
 
-        guestThread = threading.Thread(target=self.receive_frames)
+        guestThread = threading.Thread(target=self.wait_stream)
         guestThread.start()
    
     # Recebe os bytes do video através do servidor, decodifica e reproduz o vídeo
@@ -450,7 +450,7 @@ class ClientModule:
         audio_thread.start()
 
         # Callback para quando a janela foi encerrada pelo botão superior
-        self.playerWindow.protocol("WM_DELETE_WINDOW", self.wait_stream)
+        self.playerWindow.protocol("WM_DELETE_WINDOW", self.finish_streaming)
         self.playerWindow.mainloop()
 
         # Aguarda até as tres threads terminarem
@@ -598,19 +598,21 @@ class ClientModule:
             pass #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
     
     def wait_stream(self):
-        message,_ = self.client_socket.recvfrom(2048)
-        message = message.decode()
-        if message.startswith("RESPOSTA - REPRODUZINDO O VIDEO"):
-            print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
-            video_thread = threading.Thread(target=self.video_frame_decode())
-            video_thread.daemon = True
-            video_thread.start()
-        else:
-            print("MSG INESPERADA, ERRO AO REPRODUZIR VIDEO")
-        pass
+        stop = False
+        while not stop:
+            message,_ = self.client_socket.recvfrom(2048)
+            message = message.decode()
+            if message.startswith("RESPOSTA - REPRODUZINDO O VIDEO"):
+                print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
+                video_thread = threading.Thread(target=self.video_frame_decode())
+                video_thread.daemon = True
+                video_thread.start()
+                stop = True
+            else:
+                print("MSG INESPERADA, ERRO AO REPRODUZIR VIDEO")
     
-    def request_stream_group(self, video_name, resolution):
-        message = f"{'REPRODUZIR_VIDEO_GRUPO'} {video_name} {resolution} {self.user_id}" # ADICIONANDO USER_ID
+    def request_stream_group(self):
+        message = f"{'REPRODUZIR_VIDEO_GRUPO'} {self.video_name.get()} {self.resolution.get()} {self.user_id}" # ADICIONANDO USER_ID
         message = message.encode()
         self.client_socket.sendto(message, (self.server_addr, self.server_port))
 

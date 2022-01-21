@@ -45,7 +45,7 @@ class ManagerModule:
             print(f"ENVIANDO '{msg}' PARA O SERVIDOR DE STREAMING")
             
             conn.send(msg.encode())
-        if(message == "REQUEST_GROUP"):
+        if(message.startswith("REQUEST_GROUP")):
           id = message.split(" ")[1]
           if id.isnumeric():
             id = int(id)
