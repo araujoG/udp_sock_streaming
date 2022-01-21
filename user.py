@@ -46,6 +46,15 @@ class User:
     if users == "":
       users = "None"
     return users
+
+  @staticmethod
+  def is_user_in_group(ip):
+    data = json.load(open('users_list.json'))
+    for user in data['users']:
+      if("group" in user):
+        if(ip in user['group']):
+          return user['id']
+    return None
   
   @staticmethod
   def get_group_ip(id):
@@ -131,7 +140,7 @@ class User:
           data['users'][user_index]['group'] = [user['ip']]
           json.dump(data, open('users_list.json', 'w'))
     return None
-
+  
   @staticmethod
   def get_user_information(id):
     data = json.load(open('users_list.json'))

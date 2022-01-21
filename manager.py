@@ -102,10 +102,22 @@ class ManagerModule:
           conn.send(b"CRIAR_GRUPO_ACK")
           print(f"ENVIOU 'CRIAR_GRUPO_ACK' PARA {addr[0]}")
         elif message.startswith("VER_GRUPO"):
-          _,id = message.split(" ")
-          id = int(id)
+          group_owner = User.is_user_in_group(addr[0])
+          if(group_owner):
+            id = group_owner
+            _,id_group_member = message.split(" ")
+            id_group_member = int(id_group_member)
+          else:
+            _,id = message.split(" ")
+            id = int(id)
+          print(id)
           users = User.show_group(id)
+          print(users)
           msg = f'GRUPO_DE_STREAMING {users}'
+          if(group_owner and group_owner != id_group_member):
+            group_owner = str(group_owner)
+            id_group_member = str(id_group_member)
+            msg = msg.replace(group_owner,id_group_member)
           print(f"ENVIANDO {msg} PARA {addr[0]}")
           conn.send(msg.encode())
           print(f"ENVIOU {msg} PARA {addr[0]}")
