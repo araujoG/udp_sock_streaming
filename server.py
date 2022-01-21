@@ -166,6 +166,7 @@ class ServerModule():
         while (self.keep_running):
             try:
                 data, client_address = self.server_socket.recvfrom(1024)  # recebendo pacote com comando do cliente
+                print(f"Cliente {client_address} conectado")
                 message = data.decode('utf-8')
                 print(f"COMANDO DE CLIENTE RECEBIDO {client_address[0]} - {data.decode('utf-8')}")
                 if ("PARAR_STREAMING" in data.decode('utf-8')):  # request de parada de streaming
@@ -176,6 +177,7 @@ class ServerModule():
                     if("REPRODUZIR_VIDEO_GRUPO" in data.decode()):
                         group_user_address_list =  self.get_group_info(user_id,client_address[0])
                         for address in group_user_address_list:
+                            address = (address, 5030)
                             splitted_data = data.decode().split(' ')
                             nome_video = splitted_data[1]
                             qualidade_video = splitted_data[2]

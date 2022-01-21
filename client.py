@@ -259,36 +259,6 @@ class ClientModule:
             )
             self.create_group_button.pack(side=BOTTOM, pady="5")
 
-    def open_guest_window(self):
-        if self.username.get().replace(" ", "") == "":
-            self.notification_color = "red"
-            self.notification = "Nome de usuário inválido"
-            return
-        self.login(self.username.get(), 0)
-        self.mainWindow.title("Streaming Premium")
-        self.mainWindowFrame.destroy()
-        self.mainWindowFrame = Frame(self.mainWindow)
-        self.mainWindowFrame.pack(side=TOP)
-
-        texto = Label(
-            self.mainWindowFrame, text="Aguarde até que o streaming comece ..."
-        )
-        texto.pack(padx="10", pady="10")
-
-        # Carrega a lista de vídeos do servidor
-        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
-
-        self.video_name.set(OPTIONS[0])
-
-        inputframe = Frame(self.mainWindowFrame)
-        inputframe.pack(side=BOTTOM, padx=10)
-
-        L1 = Label(inputframe, text="Lista de Vídeos:")
-        L1.pack( side = LEFT)
-
-        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
-        w.pack(side=RIGHT, padx="10", pady="10")
-
     def open_group_manager_window(self):
         self.groupManagerWindow = Toplevel(self.mainWindow)
 
@@ -350,7 +320,6 @@ class ClientModule:
         self.groupManagerWindow.destroy()
 
     def load_group_manager_frame(self):
-
         self.available_users = None 
         self.my_group = None
 
@@ -408,35 +377,39 @@ class ClientModule:
         self.my_group = None
         self.groupManagerWindow.quit()
     
-    def receive_frames(self):
-        while not self.finished:
-            try:
-                frame_segment, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
-            except socket.timeout:
-                self.finished = True
-                self.finish_audio = True
-                self.close_stream()
-                return
+    def open_guest_window(self):
+        if self.username.get().replace(" ", "") == "":
+            self.notification_color = "red"
+            self.notification = "Nome de usuário inválido"
+            return
+        self.login(self.username.get(), 0)
+        self.mainWindow.title("Streaming Premium")
+        self.mainWindowFrame.destroy()
+        self.mainWindowFrame = Frame(self.mainWindow)
+        self.mainWindowFrame.pack(side=TOP)
 
-            # verificando se o segmento do frame atual eh maior que 1, se for adiciona seus dados a data
-            message = struct.unpack("?", frame_segment[0:1])[0]
-            if (message == True):
-                frame_segment = frame_segment[1:]
-                if struct.unpack("B", frame_segment[0:1])[0] > 1:
-                    self.data += frame_segment[1:]
-                # senao, comeca a realizar o decode dos bytes do video
-                else:
-                    self.data += frame_segment[1:]
-                    self.image = cv2.imdecode(np.fromstring(self.data, dtype=np.uint8), 1)
-                    if not self.buffered:
-                        self.buffered = True
-                    self.data = b""
-            else:
-                frame_segment = frame_segment[1:]
-                self.audio_frame_list.put(frame_segment)
+        texto = Label(
+            self.mainWindowFrame, text="Aguarde até que o streaming comece ..."
+        )
+        texto.pack(padx="10", pady="10")
 
-        self.close_stream()
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
 
+        self.video_name.set(OPTIONS[0])
+
+        inputframe = Frame(self.mainWindowFrame)
+        inputframe.pack(side=BOTTOM, padx=10)
+
+        L1 = Label(inputframe, text="Lista de Vídeos:")
+        L1.pack( side = LEFT)
+
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=RIGHT, padx="10", pady="10")
+
+        guestThread = threading.Thread(target=self.receive_frames)
+        guestThread.start()
+   
     # Recebe os bytes do video através do servidor, decodifica e reproduz o vídeo
     def video_frame_decode(self):
         self.data = b""
@@ -477,7 +450,7 @@ class ClientModule:
         audio_thread.start()
 
         # Callback para quando a janela foi encerrada pelo botão superior
-        self.playerWindow.protocol("WM_DELETE_WINDOW", self.finish_streaming)
+        self.playerWindow.protocol("WM_DELETE_WINDOW", self.wait_stream)
         self.playerWindow.mainloop()
 
         # Aguarda até as tres threads terminarem
@@ -491,6 +464,35 @@ class ClientModule:
         self.buffered = False
 
         self.playerWindow.destroy()
+
+    def receive_frames(self):
+        while not self.finished:
+            try:
+                frame_segment, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
+            except socket.timeout:
+                self.finished = True
+                self.finish_audio = True
+                self.close_stream()
+                return
+
+            # verificando se o segmento do frame atual eh maior que 1, se for adiciona seus dados a data
+            message = struct.unpack("?", frame_segment[0:1])[0]
+            if (message == True):
+                frame_segment = frame_segment[1:]
+                if struct.unpack("B", frame_segment[0:1])[0] > 1:
+                    self.data += frame_segment[1:]
+                # senao, comeca a realizar o decode dos bytes do video
+                else:
+                    self.data += frame_segment[1:]
+                    self.image = cv2.imdecode(np.fromstring(self.data, dtype=np.uint8), 1)
+                    if not self.buffered:
+                        self.buffered = True
+                    self.data = b""
+            else:
+                frame_segment = frame_segment[1:]
+                self.audio_frame_list.put(frame_segment)
+
+        self.close_stream()
 
     # Atualiza os frames na window que possui o player a cada self.interval até que o streamming seja finalizado
     def update_image(self):
@@ -600,6 +602,9 @@ class ClientModule:
         message = message.decode()
         if message.startswith("RESPOSTA - REPRODUZINDO O VIDEO"):
             print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
+            video_thread = threading.Thread(target=self.video_frame_decode())
+            video_thread.daemon = True
+            video_thread.start()
         else:
             print("MSG INESPERADA, ERRO AO REPRODUZIR VIDEO")
         pass
