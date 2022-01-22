@@ -715,6 +715,8 @@ class ClientModule:
         self.send_msg_manager(f"ENTRAR_NA_APP {name} {type} {ip}") ##ESTA MOCKADO  
 
     def send_msg_manager(self, msg):
+        if(msg == "SAIR_DA_APP"):
+            msg = f"{msg} {self.user_id}"
         print(f"ENVIANDO '{msg}' PARA O MANAGER")
         message = msg.encode()
         self.manager_socket.send(message)

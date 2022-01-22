@@ -87,8 +87,13 @@ class ManagerModule:
           conn.send(msg.encode())
           print(f"ENVIOU '{msg}' PARA {addr[0]}")
           print("entrou na app")
-        elif message == "SAIR_DA_APP":
+        elif(message.startswith("SAIR_DA_APP")):
           print(f"RECEBIDO 'SAIR_DA_APP' DE {addr[0]}")
+          group_owner = User.is_user_in_group(addr[0])
+          if(group_owner):
+            _,id_remove = message.split(" ")
+            id_remove = int(id_remove)
+            User.remove_user_from_group(group_owner,id_remove)
           User.remove_by_ip(addr[0])
           print(f"ENVIANDO 'SAIR_DA_APP_ACK' PARA {addr[0]}")
           conn.send(b"SAIR_DA_APP_ACK")
