@@ -52,6 +52,8 @@ class ClientModule:
                         output=True,
                         frames_per_buffer=self.CHUNK)
 
+
+
     # Inicializa o socket do client
     def start_client(self):
         port = 5050
@@ -83,9 +85,9 @@ class ClientModule:
 
     def audio_run(self):
         while (not self.finish_audio):
-            frame = self.audio_frame_list.get()
+            frame = self.audio_frame_list.get(timeout=2)
             self.stream.write(frame)
-            print(".")
+            #print(".")
         print("pos loop audio")
         self.stream.stop_stream()
         print("pos stop stream")
@@ -132,6 +134,7 @@ class ClientModule:
         windowThread.start()
 
         audio_thread = threading.Thread(target=self.audio_run)
+
         audio_thread.start()
 
         # Callback para quando a janela foi encerrada pelo botão superior

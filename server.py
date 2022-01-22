@@ -297,8 +297,9 @@ class ServerModule():
             print("ENVIANDO AUDIO PARA " + client_address[0])
             server_socket.sendto(struct.pack("?", False) + frame, client_address)
 
-            time.sleep(0.1 * CHUNK / sample_rate)
+            #time.sleep(0.1 * CHUNK / sample_rate)
             #time.sleep(0.8 * CHUNK / 44100)
+            time.sleep(0.000000000001)
 
             if cnt > (wavfile.getnframes() / CHUNK):
                 break
