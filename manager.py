@@ -117,7 +117,7 @@ class ManagerModule:
           if(group_owner and group_owner != id_group_member):
             group_owner = str(group_owner)
             id_group_member = str(id_group_member)
-            msg = msg.replace(group_owner,id_group_member)
+            msg = msg.replace(id_group_member,group_owner)
           print(f"ENVIANDO {msg} PARA {addr[0]}")
           conn.send(msg.encode())
           print(f"ENVIOU {msg} PARA {addr[0]}")
