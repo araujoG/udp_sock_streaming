@@ -57,6 +57,9 @@ class ClientModule:
         self.is_grouped = None
         self.group_owner = None
 
+        # Janela de Convidado
+        self.keep_waiting = True
+
         # Janela de seleção de vídeo
         self.resolution = StringVar()
         self.video_name = StringVar()
@@ -83,7 +86,7 @@ class ClientModule:
 
     # Inicializa o socket do client
     def start_client(self):
-        port = 5030 # 5050
+        port = 5040 # 5050
         addr = ("", port)
 
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -132,14 +135,17 @@ class ClientModule:
         self.exit_flag = True
 
     def open_premium_window(self):
-        if self.username.get().replace(" ", "") == "":
-            self.notification_color = "red"
-            self.notification = "Nome de usuário inválido"
-            return
-        self.login(self.username.get(), 1)
-        while(self.user_type == None):
-            continue
+        if self.user_name == None:
+            if self.username.get().replace(" ", "") == "":
+                self.notification_color = "red"
+                self.notification = "Nome de usuário inválido"
+                return
+            
+            self.login(self.username.get(), 1)
+            while(self.user_type == None):
+                continue
 
+        self.my_group = None
         self.show_group()
 
         while(self.my_group == None):
@@ -218,9 +224,6 @@ class ClientModule:
 
         self.notificationframe = Frame(self.mainWindowFrame)
         self.notificationframe.pack(side=BOTTOM)
-
-        # guestThread = threading.Thread(target=self.wait_stream)
-        # guestThread.start()
         
         self.display_group_button()
 
@@ -269,7 +272,12 @@ class ClientModule:
                 self.show_group_button = Button(
                     self.managerFrame, text="Ver Grupo", command=self.show_group_notification
                 )
-                self.show_group_button.pack(side=BOTTOM, pady="5", padx="5")
+                self.show_group_button.pack(side=RIGHT, pady="5", padx="5")
+
+                self.show_group_button = Button(
+                    self.managerFrame, text="Sala de Espera", command=self.open_waiting_room_window
+                )
+                self.show_group_button.pack(side=RIGHT, pady="5", padx="5")
         else:
             self.create_group_button = Button(
                 self.managerFrame, text="Criar Grupo", command=self.create_group
@@ -394,13 +402,8 @@ class ClientModule:
         self.my_group = None
         self.groupManagerWindow.quit()
     
-    def open_guest_window(self):
-        if self.username.get().replace(" ", "") == "":
-            self.notification_color = "red"
-            self.notification = "Nome de usuário inválido"
-            return
-        self.login(self.username.get(), 0)
-        self.mainWindow.title("Streaming Premium")
+    def open_waiting_room_window(self):
+        self.mainWindow.title("Streaming Waiting Room")
         self.mainWindowFrame.destroy()
         self.mainWindowFrame = Frame(self.mainWindow)
         self.mainWindowFrame.pack(side=TOP)
@@ -408,7 +411,50 @@ class ClientModule:
         texto = Label(
             self.mainWindowFrame, text="Aguarde até que o streaming comece ..."
         )
-        texto.pack(padx="10", pady="10")
+        texto.pack(side=TOP, padx="45", pady="10")
+
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
+
+        self.video_name.set(OPTIONS[0])
+
+        inputframe = Frame(self.mainWindowFrame)
+        inputframe.pack(side=TOP, padx=10)
+
+        L1 = Label(inputframe, text="Lista de Vídeos:")
+        L1.pack( side = LEFT)
+
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=RIGHT, padx="10", pady="10")
+
+        return_button = Button(
+            self.mainWindowFrame, text="Voltar", command=self.return_premium_window
+        )
+        return_button.pack(side=LEFT, padx=10, pady=10)
+
+        self.keep_waiting = True
+        guestThread = threading.Thread(target=self.wait_stream)
+        guestThread.start()
+
+    def return_premium_window(self):
+        self.keep_waiting = False
+        self.open_premium_window()
+    
+    def open_guest_window(self):
+        if self.username.get().replace(" ", "") == "":
+            self.notification_color = "red"
+            self.notification = "Nome de usuário inválido"
+            return
+        self.login(self.username.get(), 0)
+        self.mainWindow.title("Streaming Convidado")
+        self.mainWindowFrame.destroy()
+        self.mainWindowFrame = Frame(self.mainWindow)
+        self.mainWindowFrame.pack(side=TOP)
+
+        texto = Label(
+            self.mainWindowFrame, text="Aguarde até que o streaming comece ..."
+        )
+        texto.pack(side=TOP, padx="35", pady="10")
 
         # Carrega a lista de vídeos do servidor
         OPTIONS = self.request_answer("LISTAR_VIDEOS").split("\n")
@@ -424,6 +470,7 @@ class ClientModule:
         w = OptionMenu(inputframe, self.video_name, *OPTIONS)
         w.pack(side=RIGHT, padx="10", pady="10")
 
+        self.keep_waiting = True
         guestThread = threading.Thread(target=self.wait_stream)
         guestThread.start()
    
@@ -616,18 +663,23 @@ class ClientModule:
             pass #MUDAR AQUI PARA MOSTRAR NOTIFICACAO CASO O USUARIO NAO FOR PREMIUM
     
     def wait_stream(self):
-        stop = False
-        while not stop:
-            message,_ = self.client_socket.recvfrom(2048)
+        self.keep_waiting = True
+        self.client_socket.settimeout(0.5)
+        while self.keep_waiting:
+            try:
+                message,_ = self.client_socket.recvfrom(2048)
+            except socket.timeout:
+                continue
             message = message.decode()
             if message.startswith("REPRODUZINDO O VIDEO "):
                 print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
                 video_thread = threading.Thread(target=self.video_frame_decode())
                 video_thread.daemon = True
                 video_thread.start()
-                stop = True
+                self.keep_waiting = False
             else:
                 print("MSG INESPERADA, ERRO AO REPRODUZIR VIDEO")
+        self.client_socket.settimeout(None)
     
     def request_stream_group(self):
         message = f"{'REPRODUZIR_VIDEO_GRUPO'} {self.video_name.get()} {self.resolution.get()} {self.user_id}" # ADICIONANDO USER_ID

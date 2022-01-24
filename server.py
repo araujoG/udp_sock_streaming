@@ -185,6 +185,11 @@ class ServerModule():
                             client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
                             client_thread.daemon = True # thread independente
                             client_thread.start()
+                            address = (address[0], 5040)
+                            self.server_socket.sendto(message.encode(), address)
+                            client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
+                            client_thread.daemon = True # thread independente
+                            client_thread.start()
 
                             
                     elif("REPRODUZIR_VIDEO" in data.decode()):
