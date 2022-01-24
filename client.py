@@ -56,7 +56,7 @@ class ClientModule:
 
     # Inicializa o socket do client
     def start_client(self):
-        port = 5050
+        port = 5030
         addr = ("", port)
 
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -96,6 +96,12 @@ class ClientModule:
         self.p.terminate()
         self.audio_frame_list.queue.clear()
         print("fim audio")
+        self.p = pyaudio.PyAudio()
+        self.stream = self.p.open(format=self.FORMAT,  # p.get_format_from_width(2),
+                        channels=2,
+                        rate=44100,
+                        output=True,
+                        frames_per_buffer=self.CHUNK)
 
     # Recebe os bytes do video através do servidor, decodifica e reproduz o vídeo
     def video_frame_decode(self):
@@ -247,12 +253,13 @@ class ClientModule:
         print("mandando mensagem de parada")
         self.client_socket.sendto(message, (self.server_addr, self.server_port))
         print("mensagem de parada enviada")
+        self.client_socket.settimeout(0.5)
         time.sleep(1)
         # resgatando possivel pacote que "sobrou" do envio do video do servidor
         try:
             _, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
         except socket.timeout:
-            pass
+            self.client_socket.settimeout(None)
         print("streamming parado")
         return
 

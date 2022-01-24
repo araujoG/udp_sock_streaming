@@ -141,8 +141,7 @@ class ServerModule():
                     self.client_stop_list.append(client_address[0])
                     continue
                 else:
-                    client_thread = threading.Thread(target=self.single_client_serving, args=(
-                        data, client_address))  # iniciando thread para servir um cliente
+                    client_thread = threading.Thread(target=self.single_client_serving, args=(data, client_address))  # iniciando thread para servir um cliente
                     client_thread.daemon = True  # thread independente
                     client_thread.start()
             except socket.timeout:
@@ -167,10 +166,8 @@ class ServerModule():
             server_socket_audio = self.start_server()
             splitted_data = data.split(' ')
             self.conversor_audio(splitted_data[1] + "_" + splitted_data[2] + ".mp4")
-            video_thread = threading.Thread(target=self.play_video,
-                                            args=(data, client_address, server_socket_video, splitted_data))
-            audio_thread = threading.Thread(target=self.play_audio,
-                                            args=(data, client_address, server_socket_audio, splitted_data))
+            video_thread = threading.Thread(target=self.play_video, args=(data, client_address, server_socket_video, splitted_data))
+            audio_thread = threading.Thread(target=self.play_audio, args=(data, client_address, server_socket_audio, splitted_data))
 
             video_thread.daemon = True
             audio_thread.daemon = True
@@ -224,15 +221,17 @@ class ServerModule():
         while (video.isOpened()):
             cv2.waitKey(30)  # esperando para controlar o fps
             ret, frame = video.read()  # retorno se tem algum frame / resgatando frame atual
-            if (
-            not ret):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
+            if (not ret):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
                 video.release()
                 server_socket.close()  # liberando video
                 return
             if (client_address[0] in self.client_stop_list):
                 self.client_stop_list.remove(client_address[0])  # removendo cliente da lista de paradas
+                print("cliente removido da lista de paradas")
                 video.release()
+                print("video release")
                 server_socket.close()
+                print("server socket close")
                 return
             self.framing_video(frame, client_address, server_socket)
 
@@ -241,18 +240,15 @@ class ServerModule():
         data = buff_frame_data.tostring()  # array de bytes do frame
         size = len(data)  # tamanho do frame atual
 
-        number_of_segments = math.ceil(
-            size / self.MAX_FRAME_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
+        number_of_segments = math.ceil(size / self.MAX_FRAME_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
 
         start_pos = 0
         ending_pos = 0
 
         while (number_of_segments):
             ending_pos = min(size, start_pos + self.MAX_FRAME_DGRAM_SIZE)  # atualizando posicao final para envio
-            server_socket.sendto(
-                struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
-                client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
-            print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
+            server_socket.sendto(struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
+            # print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
@@ -290,8 +286,9 @@ class ServerModule():
         frame = 1
         while True:
             if (client_address[0] in self.client_stop_list):
-                self.client_stop_list.remove(client_address[0])
-                break
+                wavfile.close()
+                # self.client_stop_list.remove(client_address[0])
+                return
             frame = wavfile.readframes(CHUNK)
             frame = pickle.dumps(frame)
             print("ENVIANDO AUDIO PARA " + client_address[0])
