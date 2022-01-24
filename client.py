@@ -476,6 +476,7 @@ class ClientModule:
         bufferThread.join()
 
         print("reiniciando variaveis")
+        self.client_socket.settimeout(None)
         self.finished = False
         self.finish_audio = False
         self.buffered = False
@@ -487,11 +488,9 @@ class ClientModule:
             try:
                 frame_segment, _ = self.client_socket.recvfrom(self.MAX_DGRAM_SIZE)
             except socket.timeout:
-                self.finished = True
-                self.finish_audio = True
-                self.close_stream()
+                self.finish_streaming()
                 return
-
+            self.client_socket.settimeout(0.5)
             # verificando se o segmento do frame atual eh maior que 1, se for adiciona seus dados a data
             message = struct.unpack("?", frame_segment[0:1])[0]
             if (message == True):
