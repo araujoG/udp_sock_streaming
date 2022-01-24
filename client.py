@@ -5,6 +5,7 @@ import sys
 import socket
 import struct
 from tkinter import *
+from turtle import right
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
@@ -43,6 +44,7 @@ class ClientModule:
         self.notification = None
         self.notification_interval = 2000
         self.notification_color = ""
+        self.notification_group = False
 
         # Janela de Gerenciamento de Grupo
         self.groupManagerWindow = None
@@ -53,6 +55,7 @@ class ClientModule:
         self.my_group = None
         self.user_to_remove = StringVar()
         self.is_grouped = None
+        self.group_owner = None
 
         # Janela de seleção de vídeo
         self.resolution = StringVar()
@@ -215,8 +218,11 @@ class ClientModule:
 
         self.notificationframe = Frame(self.mainWindowFrame)
         self.notificationframe.pack(side=BOTTOM)
+
+        # guestThread = threading.Thread(target=self.wait_stream)
+        # guestThread.start()
         
-        self.show_group_button()
+        self.display_group_button()
 
     def update_notification(self):
         if self.notification == None:
@@ -230,7 +236,7 @@ class ClientModule:
             n.pack(side = LEFT, pady="5")
             
             if self.username.get().replace(" ", "") != "": 
-                self.show_group_button()
+                self.display_group_button()
 
             self.notification = None
             self.mainWindow.after(self.interval, self.update_notification)
@@ -241,7 +247,7 @@ class ClientModule:
         self.notificationframe = Frame(self.mainWindowFrame)
         self.notificationframe.pack(side=BOTTOM)
 
-    def show_group_button(self):
+    def display_group_button(self):
         if self.managerFrame != None:
             print("DESTRUINDO MANAGER FRAME")
             self.managerFrame.destroy()
@@ -249,10 +255,21 @@ class ClientModule:
         self.managerFrame.pack(side=TOP, pady=("15", "0"))
 
         if(self.is_grouped):
-            self.manage_group_button = Button(
-                self.managerFrame, text="Gerenciar Grupo", command=self.open_group_manager_window
-            )
-            self.manage_group_button.pack(side=BOTTOM, pady="5")
+            if(self.group_owner):
+                self.manage_group_button = Button(
+                    self.managerFrame, text="Gerenciar Grupo", command=self.open_group_manager_window
+                )
+                self.manage_group_button.pack(side=RIGHT, pady="5")
+
+                self.show_group_button = Button(
+                    self.managerFrame, text="Ver Grupo", command=self.show_group_notification
+                )
+                self.show_group_button.pack(side=RIGHT, pady="5", padx="5")
+            else:
+                self.show_group_button = Button(
+                    self.managerFrame, text="Ver Grupo", command=self.show_group_notification
+                )
+                self.show_group_button.pack(side=BOTTOM, pady="5", padx="5")
         else:
             self.create_group_button = Button(
                 self.managerFrame, text="Criar Grupo", command=self.create_group
@@ -589,6 +606,7 @@ class ClientModule:
         message = message.decode()
         print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
         if("REPRODUZINDO" in message):
+            pass
             video_thread = threading.Thread(target=self.video_frame_decode())
             # audio_thread = threading.Thread(target=self.audio_run())
             video_thread.daemon = True
@@ -623,6 +641,7 @@ class ClientModule:
         message = message.decode()
         print(f"RECEBIDO '{message}' DO SERVIDOR DE STREAMING")
         if("REPRODUZINDO" in message):
+            pass
             video_thread = threading.Thread(target=self.video_frame_decode())
             # audio_thread = threading.Thread(target=self.audio_run())
             video_thread.daemon = True
@@ -665,17 +684,37 @@ class ClientModule:
                 elif message.startswith("CRIAR_GRUPO_ACK"):
                     print("GRUPO CRIADO ACK")
                     self.is_grouped = True
-                    self.show_group_button()
+                    self.group_owner = True
+                    self.display_group_button()
+                    self.notification_color = "green"
+                    self.notification = "Grupo criado com sucesso"
                 elif message.startswith("GRUPO_DE_STREAMING"):
-                    print("RECEBIDO {message} DO MANAGER")
+                    print(f"RECEBIDO {message} DO MANAGER")
                     message = message.replace("GRUPO_DE_STREAMING ","")
                     self.my_group = message.split(" ")
                     if len(self.my_group) < 2 and self.my_group[0] == "None":
                         self.my_group = ["Nenhum Disponível"]
                         self.is_grouped = False
+                        self.group_owner = False
                     else:
+                        if(self.my_group[0] == self.user_id):
+                            self.group_owner = True
+                        else:
+                            self.group_owner = False
                         self.is_grouped = True
-                    print("ATUALIZANDO JANELA")
+                        self.my_group = self.my_group[1:]
+                        if self.my_group[0] == "None":
+                            self.my_group = ["Nenhum Disponível"]
+                    
+                    if(self.notification_group):
+                        self.notification_group = False
+                        if self.my_group == ["Nenhum Disponível"]:
+                            self.notification_color = "red"
+                            self.notification = "Só tem você no seu grupo"
+                        else:
+                            self.notification = "Id dos outros membros: " + ", ".join(self.my_group)
+
+                    print(f"ATUALIZANDO JANELA {self.my_group}")
                 elif message.startswith("ADD_USUARIO_GRUPO_ACK"):
                     print("USUARIO ADICIONADO AO GRUPO")
                     self.is_grouped = True
@@ -733,6 +772,10 @@ class ClientModule:
     def show_group(self):
         message = f'VER_GRUPO {self.user_id}'
         self.send_msg_manager(message)
+
+    def show_group_notification(self):
+        self.notification_group = True
+        self.show_group()
     
     def add_user_to_group(self):
         data = self.user_to_add.get().split(":")

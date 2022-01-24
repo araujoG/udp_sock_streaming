@@ -115,14 +115,10 @@ class ManagerModule:
           else:
             _,id = message.split(" ")
             id = int(id)
-          print(id)
           users = User.show_group(id)
-          print(users)
+          if(group_owner):
+            users = str(group_owner)+ ' ' + users
           msg = f'GRUPO_DE_STREAMING {users}'
-          if(group_owner and group_owner != id_group_member):
-            group_owner = str(group_owner)
-            id_group_member = str(id_group_member)
-            msg = msg.replace(id_group_member,group_owner)
           print(f"ENVIANDO {msg} PARA {addr[0]}")
           conn.send(msg.encode())
           print(f"ENVIOU {msg} PARA {addr[0]}")
