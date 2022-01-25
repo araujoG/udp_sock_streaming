@@ -176,16 +176,11 @@ class ServerModule():
                     if("REPRODUZIR_VIDEO_GRUPO" in data.decode()):
                         group_user_address_list =  self.get_group_info(user_id,client_address[0])
                         for address in group_user_address_list:
-                            address = (address, 5030)
+                            address = (address, 5040)
                             splitted_data = data.decode().split(' ')
                             nome_video = splitted_data[1]
                             qualidade_video = splitted_data[2]
                             message = f"REPRODUZINDO O VIDEO {nome_video} EM GRUPO, COM RESOLUCAO {qualidade_video}"
-                            self.server_socket.sendto(message.encode(), address)
-                            client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
-                            client_thread.daemon = True # thread independente
-                            client_thread.start()
-                            address = (address[0], 5040)
                             self.server_socket.sendto(message.encode(), address)
                             client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
                             client_thread.daemon = True # thread independente
