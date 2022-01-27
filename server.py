@@ -47,7 +47,7 @@ class ServerModule():
         addr = ("", self.port)
 
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind(addr)
         server_socket.settimeout(0.1)
 
@@ -214,13 +214,14 @@ class ServerModule():
                 
     def single_client_serving(self,data,client_address): #iniciando servico de um cliente qualquer
         data = data.decode('utf-8')
+
         if ("LISTAR_VIDEOS" == data):  # listando videos para o cliente
             server_socket = self.start_server()
             print(f"RECEBIDO DE {client_address}- LISTAR_VIDEOS\n")
             message = self.list_videos()
             print(f"ENVIANDO PARA {client_address}")
             print(message)
-            self.server_socket.sendto(message, client_address)
+            server_socket.sendto(message, client_address)
 
         if ("REPRODUZIR_VIDEO" in data):  # streaming de um video para o cliente
             print(f"RECEBIDO DE {client_address}- REPRODUZIR_VIDEO\n")
@@ -310,7 +311,7 @@ class ServerModule():
             ending_pos = min(size, start_pos + self.MAX_FRAME_DGRAM_SIZE)  # atualizando posicao final para envio
             server_socket.sendto(struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
                                  client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
-            print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
+            # TODO print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
@@ -343,7 +344,7 @@ class ServerModule():
 
         print(f"RECEBIDA CHAMADA AUDIO PARA {client_address} {server_socket}")
 
-        print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
+        # TODO print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
         data = None
         sample_rate = wavfile.getframerate()
         cnt = 0
@@ -353,10 +354,11 @@ class ServerModule():
                 self.client_stop_list.remove(client_address[0])
                 break
             frame = wavfile.readframes(CHUNK)
-            print("ENVIANDO AUDIO PARA "+ client_address[0])
+            # TODO print("ENVIANDO AUDIO PARA "+ client_address[0])
             server_socket.sendto(struct.pack("?", False) + frame, client_address)
 
             #time.sleep(0.1 * CHUNK / sample_rate)
+
             if cnt > (wavfile.getnframes() / CHUNK):
                 break
             cnt += 1
@@ -365,6 +367,7 @@ class ServerModule():
         # message = message.encode()
         # server_socket.sendto(message, client_address)
         print(f"FIM AUDIO PARA {client_address[0]}")
+
         # fecha o arquivo wave
         wavfile.close()
         
