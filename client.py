@@ -736,7 +736,7 @@ class ClientModule:
                     print("GRUPO CRIADO ACK")
                     self.is_grouped = True
                     self.group_owner = True
-                    self.display_group_button()
+                    # self.display_group_button()
                     self.notification_color = "green"
                     self.notification = "Grupo criado com sucesso"
                 elif message.startswith("GRUPO_DE_STREAMING"):
