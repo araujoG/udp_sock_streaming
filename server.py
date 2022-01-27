@@ -311,7 +311,7 @@ class ServerModule():
             ending_pos = min(size, start_pos + self.MAX_FRAME_DGRAM_SIZE)  # atualizando posicao final para envio
             server_socket.sendto(struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
                                  client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
-            # TODO print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
+            print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
@@ -344,7 +344,7 @@ class ServerModule():
 
         print(f"RECEBIDA CHAMADA AUDIO PARA {client_address} {server_socket}")
 
-        # TODO print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
+        print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
         data = None
         sample_rate = wavfile.getframerate()
         cnt = 0
@@ -354,7 +354,7 @@ class ServerModule():
                 self.client_stop_list.remove(client_address[0])
                 break
             frame = wavfile.readframes(CHUNK)
-            # TODO print("ENVIANDO AUDIO PARA "+ client_address[0])
+            print("ENVIANDO AUDIO PARA "+ client_address[0])
             server_socket.sendto(struct.pack("?", False) + frame, client_address)
 
             #time.sleep(0.1 * CHUNK / sample_rate)
