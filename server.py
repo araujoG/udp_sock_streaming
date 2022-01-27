@@ -5,57 +5,217 @@ import cv2
 import pickle
 import struct
 import math
+import os
 import time
+from tkinter import *
 import wave
 import pyaudio
+import json
 import moviepy.editor as mp
 from numpy import array
 from moviepy.editor import *
 
-
 class ServerModule():
     MAX_DGRAM_SIZE = 2 ** 16  # tamanho maximo do pacote udp
-    MAX_IMG_DGRAM_SIZE = MAX_DGRAM_SIZE - 64  # evitar overflow no pacote
+    MAX_FRAME_DGRAM_SIZE = MAX_DGRAM_SIZE - 64  # evitar overflow no pacote
+    MAX_AUDIO_DGRAM_SIZE = math.ceil(MAX_DGRAM_SIZE - (2 ** 16)/2)
 
-    def __init__(self):
+    def __init__(self,manager_addr):
+        self.manager_addr = manager_addr
         self.port = 6000
+        self.manager_port = 5000
         self.server_socket = self.start_server()  # iniciando socket da thread principal
+        self.manager_socket = self.start_manager_connection()
         self.client_stop_list = []  # lista de request para parada de streaming
 
-        self.serve_clients()  # iniciando servico
+        self.mainWindow = Tk()
+        self.mainWindow.title("Server")
+        self.resolution = StringVar()
+        self.video_name = StringVar()
+        self.keep_running = True
+
+        self.available_videos = self.get_available_videos()
 
     # iniciando server
+    def start_manager_connection(self):
+        manager_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        manager_socket.connect((self.manager_addr, self.manager_port))
+
+        return manager_socket
+
     def start_server(self):  # iniciando novo socket udp
         addr = ("", self.port)
 
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind(addr)
+        server_socket.settimeout(0.1)
 
         print(f"SERVIDOR INICIADO {addr}")
         return server_socket
 
+    def open_include_window(self):  # janela para incluir um video
+        # A janela que contém o player do streaming é aberta
+        self.includeWindow = Toplevel(self.mainWindow)
+
+        texto = Label(
+            self.includeWindow, text="Selecione um vídeo para disponibiliza-lo no streaming:"
+        )
+        texto.pack(padx="10", pady="10")
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.list_videos_in_folder()
+        if OPTIONS == [] :
+            OPTIONS = [""]
+
+        self.video_name.set(OPTIONS[0])
+
+        bottomframe = Frame(self.includeWindow)
+        bottomframe.pack(side=BOTTOM)
+
+        inputframe = Frame(self.includeWindow)
+        inputframe.pack(side=BOTTOM, padx=10)
+
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=LEFT)
+
+        submit_button = Button(
+            bottomframe, text="Disponibilizar Vídeo", command=self.include_video
+        )
+        submit_button.pack(side=BOTTOM, padx=10, pady=10)
+
+    def open_remove_window(self):  # janela para remover um video disponível
+        # A janela que contém o player do streaming é aberta
+        self.removeWindow = Toplevel(self.mainWindow)
+
+        texto = Label(
+            self.removeWindow, text="Selecione um dos vídeos disponíveis no streaming para removê-lo:"
+        )
+        texto.pack(padx="10", pady="10")
+        # Carrega a lista de vídeos do servidor
+        OPTIONS = self.available_videos
+        if OPTIONS == [] :
+            OPTIONS = [""]
+
+        self.video_name.set(OPTIONS[0])
+
+        bottomframe = Frame(self.removeWindow)
+        bottomframe.pack(side=BOTTOM)
+
+        inputframe = Frame(self.removeWindow)
+        inputframe.pack(side=BOTTOM, padx=10)
+
+        w = OptionMenu(inputframe, self.video_name, *OPTIONS)
+        w.pack(side=LEFT)
+
+        submit_button = Button(
+            bottomframe, text="Remover Vídeo", command=self.remove_video
+        )
+        submit_button.pack(side=BOTTOM, padx=10, pady=10)
+
+    def open_main_window(self):
+
+        server_thread = threading.Thread(target=self.serve_clients)
+        server_thread.start()
+
+        texto = Label(
+            self.mainWindow, text="Gerencie os vídeos disponíveis no streaming:"
+        )
+        texto.pack(padx="10", pady="10")
+
+        include_button = Button(
+            self.mainWindow, text="Incluir Vídeo", command=self.open_include_window
+        )
+        remove_button = Button(
+            self.mainWindow, text="Remover Vídeo", command=self.open_remove_window
+        )
+        include_button.pack(side=BOTTOM, padx=10, pady=10)
+        remove_button.pack(side=BOTTOM, padx=10, pady=10)
+
+        self.mainWindow.protocol("WM_DELETE_WINDOW", self.close_server)
+
+        self.mainWindow.mainloop()
+
+    def close_server(self):
+        print("Fechando servidor...")
+        self.keep_running = False
+        self.mainWindow.quit()
+    
+    def get_user_info(self,user_id):
+        message = f"GET_USER_INFORMATION {user_id}"
+        print(f"ENVIANDO '{message}' PARA O MANAGER")
+        self.manager_socket.send(message.encode())
+        message = self.manager_socket.recv(2048)
+        message = message.decode()
+        print(f"RECEBIDO '{message}' DO MANAGER")
+        return message.replace("USER_INFORMATION ", "")
+    
+    def get_group_info(self,user_id,client_address):
+        message = f"REQUEST_GROUP {user_id}"
+        print(f"ENVIANDO '{message}' PARA O MANAGER")
+        self.manager_socket.send(message.encode())
+        message = self.manager_socket.recv(2048)
+        message = message.decode()
+        print(f"RECEBIDO '{message}' DO MANAGER")
+        if(message != "NO_GROUP"):
+            return message.split(" ")
+        else:
+            return [client_address]
+
     def serve_clients(self):
         print(f"ESPERANDO PRIMEIRO COMANDO DE CLIENTE")
-        while (True):
+        while (self.keep_running):
             try:
-                data, client_address = self.server_socket.recvfrom(1024)  # recebendo pacote com comando do cliente
-                print(f"COMANDO DE CLIENTE RECEBIDO {client_address} - {data.decode('utf-8')}\n")
-                if ("PARAR_STREAMING" == data.decode('utf-8')):  # request de parada de streaming
-                    self.client_stop_list.append(client_address)
+                data, client_address = self.server_socket.recvfrom(2048)  # recebendo pacote com comando do cliente
+                message = data.decode('utf-8')
+                print(f"COMANDO DE CLIENTE RECEBIDO {client_address[0]} - {data.decode('utf-8')}")
+                if ("PARAR_STREAMING" in data.decode('utf-8')):  # request de parada de streaming
+                    self.client_stop_list.append(client_address[0])
                     continue
                 else:
-                    client_thread = threading.Thread(target=self.single_client_serving, args=(data, client_address))  # iniciando thread para servir um cliente
-                    client_thread.daemon = True  # thread independente
-                    client_thread.start()
+                    user_id = message.split(" ")[-1]
+                    if("REPRODUZIR_VIDEO_GRUPO" in data.decode()):
+                        group_user_address_list =  self.get_group_info(user_id,client_address[0])
+                        for address in group_user_address_list:
+                            address = (address, 5040)
+                            splitted_data = data.decode().split(' ')
+                            nome_video = splitted_data[1]
+                            qualidade_video = splitted_data[2]
+                            message = f"REPRODUZINDO O VIDEO {nome_video} EM GRUPO, COM RESOLUCAO {qualidade_video}"
+                            self.server_socket.sendto(message.encode(), address)
+                            client_thread = threading.Thread(target=self.single_client_serving, args=(data, address)) # iniciando thread para servir um cliente
+                            client_thread.daemon = True # thread independente
+                            client_thread.start()
+
+                            
+                    elif("REPRODUZIR_VIDEO" in data.decode()):
+                        id, name, type, ip = self.get_user_info(user_id).split(" ")
+                        if(int(type) == 0):
+                            message = b"RESPOSTA - NAO TEM PERMISSAO PARA REPRODUZIR VIDEOS, POR FAVOR MUDE SUA CLASSIFICACAO"
+                            self.server_socket.sendto(message, client_address)
+                        else:
+                            splitted_data = data.decode().split(' ')
+                            nome_video = splitted_data[1]
+                            qualidade_video = splitted_data[2]
+                            message = f"RESPOSTA - REPRODUZINDO O VIDEO {nome_video}, COM RESOLUCAO {qualidade_video}"
+                            self.server_socket.sendto(message.encode(), client_address)
+                            client_thread = threading.Thread(target=self.single_client_serving, args=(
+                            data, client_address))  # iniciando thread para servir um cliente
+                            client_thread.daemon = True  # thread independente
+                            client_thread.start()
+                    else:
+                        client_thread = threading.Thread(target=self.single_client_serving, args=(
+                        data, client_address))  # iniciando thread para servir um cliente
+                        client_thread.daemon = True  # thread independente
+                        client_thread.start()
+            except socket.timeout:
+                continue
             except KeyboardInterrupt:
-                break
+                quit()
                 
     def single_client_serving(self,data,client_address): #iniciando servico de um cliente qualquer
         data = data.decode('utf-8')
-        # server_socket = self.start_server()
-
         if ("LISTAR_VIDEOS" == data):  # listando videos para o cliente
+            server_socket = self.start_server()
             print(f"RECEBIDO DE {client_address}- LISTAR_VIDEOS\n")
             message = self.list_videos()
             print(f"ENVIANDO PARA {client_address}")
@@ -63,26 +223,57 @@ class ServerModule():
             self.server_socket.sendto(message, client_address)
 
         if ("REPRODUZIR_VIDEO" in data):  # streaming de um video para o cliente
-            now = time.time()
             print(f"RECEBIDO DE {client_address}- REPRODUZIR_VIDEO\n")
-            self.play_video(data,client_address,self.server_socket)
-            end = time.time() - now
-            print(end)
+            server_socket_video = self.start_server()
+            # server_socket_audio = self.start_server()
+            splitted_data = data.split(' ')
+            # self.conversor_audio(splitted_data[1]+"_"+splitted_data[2]+".mp4")
+            video_thread = threading.Thread(target=self.play_video,args=(data, client_address, server_socket_video, splitted_data))
+            # audio_thread = threading.Thread(target=self.play_audio, args=(data,client_address,server_socket_audio,splitted_data))
 
-        # server_socket.close()
+            video_thread.daemon = True
+            # audio_thread.daemon = True
+
+            video_thread.start()
+            # audio_thread.start()
         return
 
     def list_videos(self):  # resgatando lista de videos disponiveis
+        message = "\n".join(self.available_videos)
+        message = message.encode()
+        return message
+    
+    def include_video(self):  # para incluir um video no catalogo
+        if self.video_name.get() == "":
+            return
+        self.available_videos.append(self.video_name.get())
+        self.write_available_videos()
+        self.includeWindow.destroy()
+
+    def remove_video(self):  # para remover um video do catalogo
+        if self.video_name.get() == "":
+            return
+        self.available_videos.remove(self.video_name.get())
+        self.write_available_videos()
+        self.removeWindow.destroy()
+
+    def get_available_videos(self):
+        data = json.load(open('catalogo.json'))
+        return data['videos']
+    
+    def write_available_videos(self):
+        with open("catalogo.json", 'w') as f:
+            json.dump({"videos":self.available_videos}, f)
+
+    def list_videos_in_folder(self):  # listando videos
         filenames = os.listdir('./videos/')
         output = set()
         for file in filenames:
             output.add(file.strip(".mp4").split("_")[0])
-        message = "\n".join(output)
-        message = message.encode()
-        return message
+        output -= set(self.available_videos)
+        return list(output)
 
-    def play_video(self, data, client_address, server_socket):
-        splitted_data = data.split(' ')
+    def play_video(self, data, client_address, server_socket,splitted_data):
         video_name = splitted_data[1]
         resolution = splitted_data[2]
         video_string = './videos/' + video_name + '_' + resolution + '.mp4'  # path do video
@@ -92,12 +283,17 @@ class ServerModule():
         while (video.isOpened()):
             cv2.waitKey(30)  # esperando para controlar o fps
             ret, frame = video.read()  # retorno se tem algum frame / resgatando frame atual
-
-            if (not ret or client_address in self.client_stop_list):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
-                video.release()  # liberando video
-                self.client_stop_list.remove(client_address)  # removendo cliente da lista de paradas
+            if (not ret):  # se video.read nao tiver retornado nenhum frame ou se o cliente tiver pedido a parada do streaming
+                video.release()
+                server_socket.close()  # liberando video
                 return
-
+            if (client_address[0] in self.client_stop_list):
+                print(f"{client_address[0]} pediu para parar o streaming")
+                self.client_stop_list.remove(client_address[0])  # removendo cliente da lista de paradas
+                video.release()
+                server_socket.close()
+                print(f"{client_address[0]} teve o streaming encerrado")
+                return
             self.framing_video(frame, client_address, server_socket)
 
     def framing_video(self, frame, client_address, server_socket):  # segmentacao e envio do video
@@ -105,80 +301,79 @@ class ServerModule():
         data = buff_frame_data.tostring()  # array de bytes do frame
         size = len(data)  # tamanho do frame atual
 
-        number_of_segments = math.ceil(size / self.MAX_IMG_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
+        number_of_segments = math.ceil(size / self.MAX_FRAME_DGRAM_SIZE)  # numero de segmentos/pacotes udp que serao enviados no frame atual
 
         start_pos = 0
         ending_pos = 0
 
         while (number_of_segments):
-            ending_pos = min(size, start_pos + self.MAX_IMG_DGRAM_SIZE)  # atualizando posicao final para envio
-            server_socket.sendto(struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
+            ending_pos = min(size, start_pos + self.MAX_FRAME_DGRAM_SIZE)  # atualizando posicao final para envio
+            server_socket.sendto(struct.pack("?", True) + struct.pack("B", number_of_segments) + data[start_pos:ending_pos],
                                  client_address)  # primeiro byte de cada segmento indica o numero do segmento do frame atual
-            print(f"ENVIANDO FRAME VIDEO PARA {client_address}")
+            print(f"ENVIANDO FRAME VIDEO PARA {client_address[0]}")
             start_pos = ending_pos
             number_of_segments -= 1  # atualizando numero do segmento a ser enviado
 
-    def conversor_audio(self, nome_video):  # para pegar o audio do video e vonverter em um arquivo wav
-        my_clip = mp.VideoFileClip(r"./videos/" + nome_video)  # para importar o video
+    def conversor_audio(self, video_name):  # para pegar o audio do video e converter em um arquivo wav
+        my_clip = mp.VideoFileClip(r"./videos/" + video_name)  # para importar o video
 
-        while nome_video[-1] != ".":  # para deletar o mp4 do nome do arquivo
-            nome_video = nome_video[:-1]
+        while video_name[-1] != ".":  # para deletar o mp4 do nome do arquivo
+            video_name = video_name[:-1]
 
-        nome_video = nome_video + "wav"  # adicionando o tipo do arquivo no final do nome
+        video_name = video_name.split("_")[0] + ".wav"  # adicionando o tipo do arquivo no final do nome
 
-        my_clip.audio.write_audiofile(r"./audios/" + nome_video)  # transforma o audio em um arquivo wav
+        if os.path.isfile(f"audios/{video_name}"):
+            return
+        my_clip.audio.write_audiofile(r"./audios/" + video_name)  # transforma o audio em um arquivo wav
 
-    def play_audio(self, data, client_address, server_socket):  # roda o audio
+    def play_audio(self, data, client_address, server_socket,splitted_data):  # roda o audio
         # chunck mostra quantos pontos iremos ler por vez no arquivo wave
-        print("entrou msm")
-        CHUNK = 2048
-        splitted_data = data.split(' ')
         audio_name = splitted_data[1]
         resolution = splitted_data[2]
-        audio_string = './audios/' + audio_name + '_' + resolution + '.wav'  # path do audio
+        audio_string = './audios/' + audio_name + '.wav'  # path do audio
 
         # abrimos um arquivo
         wavfile = wave.open(audio_string, 'rb')
 
-        # criamos um objeto pyaudio para manipular o arquivo
-        audioobj = pyaudio.PyAudio()
 
         # criamos um fluxo de áudio. os dados para a geração do do fluxo são obtidos
         # a partir do próprio arquivo wave aberto anteriormente
-        stream = audioobj.open(
-            format=audioobj.get_format_from_width(wavfile.getsampwidth()),
-            channels=wavfile.getnchannels(),
-            rate=wavfile.getframerate(),
-            input=True,
-            frames_per_buffer=CHUNK)
+        CHUNK = 1024
+
 
         print(f"RECEBIDA CHAMADA AUDIO PARA {client_address} {server_socket}")
 
-        print(f"ENVIANDO FRAME AUDIO PARA {client_address} {server_socket}")
+        print(f"ENVIANDO FRAME AUDIO PARA {client_address[0]} {server_socket}")
         data = None
         sample_rate = wavfile.getframerate()
         cnt = 0
+        frame = 1
         while True:
+            if(client_address[0] in self.client_stop_list):
+                self.client_stop_list.remove(client_address[0])
+                break
             frame = wavfile.readframes(CHUNK)
-            server_socket.sendto(frame, client_address)
-            print(f"ENVIANDO FRAME AUDIO PARA {client_address}")
-            time.sleep(0.8 * CHUNK / sample_rate)
+            print("ENVIANDO AUDIO PARA "+ client_address[0])
+            server_socket.sendto(struct.pack("?", False) + frame, client_address)
+
+            #time.sleep(0.1 * CHUNK / sample_rate)
             if cnt > (wavfile.getnframes() / CHUNK):
                 break
             cnt += 1
 
-        print(f"FIM AUDIO PARA {client_address}")
-        # para de enviar o fluxo para o dispositivo de saida
-        stream.stop_stream()
-        # fecha o fluxo
-        stream.close()
-        # libera os recursos dedicados ao obj de audio
-        audioobj.terminate()
+        # message = 'FIM_AUDIO'
+        # message = message.encode()
+        # server_socket.sendto(message, client_address)
+        print(f"FIM AUDIO PARA {client_address[0]}")
         # fecha o arquivo wave
         wavfile.close()
-
+        
 def main():
-    ServerModule()
+    if len(sys.argv) > 1:
+        manager_addr = sys.argv[1]
+        server = ServerModule(manager_addr)
+        server.open_main_window()
+
 
 if __name__ == "__main__":
     main()
